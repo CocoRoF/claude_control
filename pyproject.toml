@@ -1,0 +1,27 @@
+[project]
+name = "mcp-station"
+version = "1.0.0"
+description = "MCP Station - FastAPI based MCP server management system"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "fastapi==0.128.0",
+    "uvicorn==0.40.0",
+    "pydantic==2.12.5",
+    "pydantic-core==2.41.5",
+    "pydantic-settings==2.12.0",
+    "python-dotenv==1.2.1",
+    "python-multipart==0.0.20",
+    "aiofiles==25.1.0",
+    "httpx==0.28.1",
+    "qdrant-client==1.16.2",
+    "orjson==3.11.5",
+    "redis==7.1.0",
+    "cachetools==6.2.4",
+    "psycopg-binary==3.3.2",
+    "psycopg==3.3.2",
+    "psycopg-pool==3.3.0",
+]
+
+[project.optional-dependencies]
