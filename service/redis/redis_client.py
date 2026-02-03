@@ -1,7 +1,7 @@
 """
-Redis Client for MCP Session Management
+Redis Client for Claude Control
 
-MCP 세션을 Redis에서 관리하기 위한 클라이언트
+Claude 세션을 Redis에서 관리하기 위한 클라이언트
 Multi-pod 환경에서 Redis가 true source 역할을 함
 """
 import os
@@ -18,7 +18,7 @@ REDIS_AVAILABLE = True
 
 class RedisClient:
     """
-    MCP 세션 관리용 Redis 클라이언트
+    Claude 세션 관리용 Redis 클라이언트
     
     싱글톤 패턴으로 구현되어 애플리케이션 전체에서 하나의 인스턴스만 사용
     """
@@ -37,7 +37,7 @@ class RedisClient:
         port: Optional[int] = None,
         db: Optional[int] = None,
         password: Optional[str] = None,
-        key_prefix: str = "mcp-station"
+        key_prefix: str = "claude-control"
     ):
         # 이미 초기화된 경우 스킵 (싱글톤)
         if RedisClient._initialized:
@@ -53,7 +53,7 @@ class RedisClient:
         self._host = host or os.getenv('REDIS_HOST', 'redis')
         self._port = port or int(os.getenv('REDIS_PORT', '6379'))
         self._db = db or int(os.getenv('REDIS_DB', '0'))
-        self._password = password or os.getenv('REDIS_PASSWORD', 'redis_secure_password123!')
+        self._password = password or os.getenv('REDIS_PASSWORD')
         
         # 연결 타임아웃 설정
         self._socket_timeout = float(os.getenv('REDIS_SOCKET_TIMEOUT', '5'))

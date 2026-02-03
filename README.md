@@ -1,181 +1,142 @@
-# MCP Station
+# Claude Control
 
-MCP (Model Context Protocol) 서버 관리 및 라우팅 시스템
+Claude Code 멀티 세션 관리 시스템
 
-## 아키텍처 개요
+## 개요
+
+Claude Control은 여러 Claude Code 세션을 동시에 관리하고 제어할 수 있는 시스템입니다.
+
+### 주요 기능
+
+- **멀티 세션 관리**: 여러 Claude Code 인스턴스를 세션 단위로 생성/관리
+- **세션별 독립 스토리지**: 각 세션마다 독립적인 작업 디렉토리 제공
+- **Multi-pod 지원**: Kubernetes 환경에서 여러 Pod에 걸친 세션 관리
+- **Redis 기반 세션 공유**: Redis를 통한 세션 메타데이터 공유
+
+## 아키텍처
+
 ```
-┌─────────────────┐
-│ polarag_backend │
-└────────┬────────┘
-         │ HTTP
-         ▼
-┌─────────────────────────────────────────┐
-│         MCP Station (FastAPI)           │
-│  ┌────────────────────────────────────┐ │
-│  │      Session Manager               │ │
-│  │  ┌──────────┬──────────┬────────┐ │ │
-│  │  │Session 1 │Session 2 │Session N│ │ │
-│  │  └──────────┴──────────┴────────┘ │ │
-│  └────────────────────────────────────┘ │
-│  ┌────────────────────────────────────┐ │
-│  │      Process Manager               │ │
-│  │  ┌──────────┬──────────┬────────┐ │ │
-│  │  │Python    │Node.js   │Python  │ │ │
-│  │  │MCP Server│MCP Server│MCP Srv │ │ │
-│  │  │(PID 123) │(PID 456) │(PID 789│ │ │
-│  │  └──────────┴──────────┴────────┘ │ │
-│  └────────────────────────────────────┘ │
-│  ┌────────────────────────────────────┐ │
-│  │           Router                   │ │
-│  │  (JSON-RPC over stdio)             │ │
-│  └────────────────────────────────────┘ │
-└─────────────────────────────────────────┘
-```
-
-## 핵심 컴포넌트
-
-### 1. Session Manager (`session_manager.py`)
-- MCP 서버 세션의 생명주기 관리
-- 세션 생성, 조회, 삭제
-- 죽은 세션 자동 정리
-
-### 2. Process Manager (`process_manager.py`)
-- 개별 MCP 서버를 서브프로세스로 실행
-- Python 및 Node.js 기반 MCP 서버 지원
-- stdio를 통한 JSON-RPC 통신
-- 프로세스 상태 모니터링
-
-### 3. Router (`router.py`)
-- 요청을 적절한 세션으로 라우팅
-- JSON-RPC 2.0 프로토콜 지원
-- 에러 핸들링 및 타임아웃 관리
-
-### 4. FastAPI Application (`main.py`)
-- RESTful API 엔드포인트 제공
-- 세션 관리 API
-- MCP 요청 프록시 API
-
-## API 엔드포인트
-
-### 세션 관리
-
-#### POST `/sessions` - 세션 생성
-```json
-{
-  "server_type": "python",
-  "server_command": "/path/to/mcp_server.py",
-  "server_args": ["--port", "8080"],
-  "env_vars": {
-    "API_KEY": "secret"
-  },
-  "working_dir": "/app/servers"
-}
+┌─────────────────────────────────────────────────────────────────┐
+│                        Claude Control                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   [API Layer]                                                    │
+│   ├── POST /api/sessions          - 세션 생성                   │
+│   ├── GET  /api/sessions          - 세션 목록                   │
+│   ├── GET  /api/sessions/{id}     - 세션 조회                   │
+│   ├── DELETE /api/sessions/{id}   - 세션 삭제                   │
+│   ├── POST /api/sessions/{id}/execute - Claude 실행             │
+│   └── GET  /api/sessions/{id}/storage - 스토리지 조회           │
+│                                                                  │
+│   [Session Manager]                                              │
+│   ├── 세션 생명주기 관리                                         │
+│   ├── Redis 기반 메타데이터 저장                                 │
+│   └── Multi-pod 세션 라우팅                                      │
+│                                                                  │
+│   [Claude Process]                                               │
+│   ├── claude CLI 프로세스 관리                                   │
+│   ├── 독립 스토리지 디렉토리                                     │
+│   └── 프롬프트 실행 및 응답 수집                                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**응답:**
-```json
-{
-  "session_id": "uuid-here",
-  "server_type": "python",
-  "status": "running",
-  "created_at": "2025-09-29T...",
-  "pid": 12345
-}
-```
+## 설치
 
-#### GET `/sessions` - 세션 목록
-모든 활성 세션 조회
+### 필수 요구사항
 
-#### GET `/sessions/{session_id}` - 세션 정보
-특정 세션의 상태 조회
+- Python 3.11+
+- Claude CLI (`npm install -g @anthropic-ai/claude-code`)
+- Redis (선택사항, Multi-pod 환경에서 필요)
 
-#### DELETE `/sessions/{session_id}` - 세션 삭제
-세션 종료 및 프로세스 정리
+### 설치 방법
 
-### MCP 요청
-
-#### POST `/mcp/request` - MCP 요청 라우팅
-```json
-{
-  "session_id": "uuid-here",
-  "method": "tools/list",
-  "params": {}
-}
-```
-
-**응답:**
-```json
-{
-  "success": true,
-  "data": {
-    "tools": [...]
-  }
-}
-```
-
-## Docker Compose 네트워크 통신
-
-### Backend에서 MCP Station 호출 예시:
-
-```python
-import httpx
-
-# 세션 생성
-async with httpx.AsyncClient() as client:
-    response = await client.post(
-        "http://mcp_station:20100/sessions",
-        json={
-            "server_type": "python",
-            "server_command": "/app/my_mcp_server.py"
-        }
-    )
-    session_info = response.json()
-    session_id = session_info["session_id"]
-
-    # MCP 요청
-    response = await client.post(
-        "http://mcp_station:20100/mcp/request",
-        json={
-            "session_id": session_id,
-            "method": "tools/list",
-            "params": {}
-        }
-    )
-    result = response.json()
-```
-
-## 실행 방법
-
-### 로컬 개발
 ```bash
+# 의존성 설치
 pip install -r requirements.txt
-python main.py
-```
 
-### Docker Compose
-```yaml
-mcp_station:
-  build: ./mcp_station/.
-  container_name: mcp_station
-  restart: unless-stopped
-  ports:
-    - 20100:20100
+# 또는 pyproject.toml 사용
+pip install -e .
 ```
 
 ## 환경 변수
 
-현재는 하드코딩된 포트를 사용하지만, 필요시 `.env` 파일로 설정 가능:
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `APP_HOST` | 서버 호스트 | `0.0.0.0` |
+| `APP_PORT` | 서버 포트 | `8000` |
+| `DEBUG_MODE` | 디버그 모드 | `false` |
+| `REDIS_HOST` | Redis 호스트 | `redis` |
+| `REDIS_PORT` | Redis 포트 | `6379` |
+| `REDIS_PASSWORD` | Redis 비밀번호 | - |
+| `CLAUDE_STORAGE_ROOT` | 세션 스토리지 루트 경로 | `/tmp/claude_sessions` |
 
-```env
-MCP_STATION_PORT=20100
-LOG_LEVEL=INFO
+## 실행
+
+```bash
+# 개발 모드 (hot reload)
+DEBUG_MODE=true python main.py
+
+# 프로덕션 모드
+python main.py
 ```
 
-## 향후 개선 사항
+## API 사용 예시
 
-1. **인증/인가**: API 키 또는 JWT 기반 인증
-2. **영속성**: 세션 정보를 DB에 저장
-3. **모니터링**: Prometheus 메트릭 추가
-4. **Rate Limiting**: 요청 제한
-5. **WebSocket 지원**: 실시간 양방향 통신
-6. **Health Check 개선**: 프로세스 상태 상세 모니터링
+### 세션 생성
+
+```bash
+curl -X POST http://localhost:8000/api/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_name": "my-session",
+    "model": "claude-sonnet-4-20250514"
+  }'
+```
+
+### Claude 실행
+
+```bash
+curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Hello, Claude!"
+  }'
+```
+
+### 세션 삭제
+
+```bash
+curl -X DELETE http://localhost:8000/api/sessions/{session_id}
+```
+
+## 프로젝트 구조
+
+```
+claude_control/
+├── main.py                         # FastAPI 앱 진입점
+├── controller/
+│   └── claude_controller.py        # API 엔드포인트
+├── service/
+│   ├── claude_manager/             # 핵심 세션 관리
+│   │   ├── models.py               # 데이터 모델
+│   │   ├── process_manager.py      # Claude 프로세스 관리
+│   │   └── session_manager.py      # 세션 생명주기
+│   ├── redis/
+│   │   └── redis_client.py         # Redis 클라이언트
+│   ├── pod/
+│   │   └── pod_info.py             # Pod 정보 (Multi-pod)
+│   ├── middleware/
+│   │   └── session_router.py       # 세션 라우팅 미들웨어
+│   ├── proxy/
+│   │   └── internal_proxy.py       # Pod 간 프록시
+│   └── utils/
+│       └── utils.py                # 유틸리티
+├── pyproject.toml
+├── requirements.txt
+└── README.md
+```
+
+## 라이선스
+
+MIT License

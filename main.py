@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from controller.mcpController import router as mcp_router, session_manager
+from controller.claude_controller import router as claude_router, session_manager
 from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import init_pod_info, get_pod_info
 from service.middleware.session_router import SessionRoutingMiddleware
@@ -19,17 +19,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def print_mcp_station_logo():
-    """MCP Station 로고 출력"""
+def print_claude_control_logo():
+    """Claude Control 로고 출력"""
     logo = """
-    ███╗   ███╗ ██████╗██████╗     ███████╗████████╗ █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
-    ████╗ ████║██╔════╝██╔══██╗    ██╔════╝╚══██╔══╝██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
-    ██╔████╔██║██║     ██████╔╝    ███████╗   ██║   ███████║   ██║   ██║██║   ██║██╔██╗ ██║
-    ██║╚██╔╝██║██║     ██╔═══╝     ╚════██║   ██║   ██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
-    ██║ ╚═╝ ██║╚██████╗██║         ███████║   ██║   ██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
-    ╚═╝     ╚═╝ ╚═════╝╚═╝         ╚══════╝   ╚═╝   ╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+     ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗     ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  ██████╗ ██╗     
+    ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝    ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔═══██╗██║     
+    ██║     ██║     ███████║██║   ██║██║  ██║█████╗      ██║     ██║   ██║██╔██╗ ██║   ██║   ██████╔╝██║   ██║██║     
+    ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝      ██║     ██║   ██║██║╚██╗██║   ██║   ██╔══██╗██║   ██║██║     
+    ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗    ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║╚██████╔╝███████╗
+     ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
 
-    🚀 MCP Server Management System 🚀
+    🤖 Claude Code Multi-Session Management System 🤖
     """
     logger.info(logo)
 
@@ -73,9 +73,9 @@ def get_app_redis_client(app: FastAPI) -> RedisClient:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
-    print_mcp_station_logo()
-    print_step_banner("START", "MCP STATION STARTUP", "Initializing MCP server management system")
-    logger.info("Starting MCP Station")
+    print_claude_control_logo()
+    print_step_banner("START", "CLAUDE CONTROL STARTUP", "Initializing Claude session management system")
+    logger.info("Starting Claude Control")
     
     # Pod 정보 초기화
     print_step_banner("POD", "POD INFO", "Initializing pod information...")
@@ -92,13 +92,17 @@ async def lifespan(app: FastAPI):
     # SessionManager에 Redis 클라이언트 주입
     session_manager.set_redis_client(redis_client)
     
-    print_step_banner("READY", "MCP STATION READY", "All systems operational! 🎉")
-    logger.info("🎉 MCP Station startup complete! Ready to serve requests.")
+    print_step_banner("READY", "CLAUDE CONTROL READY", "All systems operational! 🎉")
+    logger.info("🎉 Claude Control startup complete! Ready to serve requests.")
     
     yield
     
-    print_step_banner("SHUTDOWN", "MCP STATION SHUTDOWN", "Cleaning up sessions...")
-    logger.info("Shutting down MCP Station")
+    print_step_banner("SHUTDOWN", "CLAUDE CONTROL SHUTDOWN", "Cleaning up sessions...")
+    logger.info("Shutting down Claude Control")
+    
+    # Internal Proxy 클라이언트 종료
+    proxy = get_internal_proxy()
+    await proxy.close()
     
     # Internal Proxy 클라이언트 종료
     proxy = get_internal_proxy()
@@ -124,8 +128,8 @@ async def lifespan(app: FastAPI):
 
 # FastAPI 앱 생성
 app = FastAPI(
-    title="MCP Station",
-    description="MCP 서버 관리 및 라우팅 시스템",
+    title="Claude Control",
+    description="Claude Code 멀티 세션 관리 시스템",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -149,7 +153,7 @@ async def root():
     """헬스체크"""
     pod_info = get_pod_info()
     return {
-        "service": "MCP Station",
+        "service": "Claude Control",
         "status": "running",
         "pod_name": pod_info.pod_name,
         "pod_ip": pod_info.pod_ip,
@@ -193,8 +197,8 @@ async def redis_stats():
     return {"error": "Redis client not initialized"}
 
 
-# MCP 라우터 등록
-app.include_router(mcp_router)
+# Claude 라우터 등록
+app.include_router(claude_router)
 
 if __name__ == "__main__":
     try:

@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 PROXY_TIMEOUT = 60.0
 
 # 프록시 헤더 (무한 루프 방지)
-PROXY_HEADER = "X-MCP-Station-Proxied"
-PROXY_SOURCE_HEADER = "X-MCP-Station-Source-Pod"
+PROXY_HEADER = "X-Claude-Control-Proxied"
+PROXY_SOURCE_HEADER = "X-Claude-Control-Source-Pod"
 
 
 class InternalProxy:

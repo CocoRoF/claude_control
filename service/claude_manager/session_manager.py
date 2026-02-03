@@ -1,5 +1,5 @@
 """
-MCP 서버 세션 관리
+Claude 세션 관리자
 
 Redis를 true source로 사용하여 multi-pod 환경 지원
 로컬 프로세스는 메모리에서 관리하고, 세션 메타데이터는 Redis에 저장
@@ -7,20 +7,22 @@ Redis를 true source로 사용하여 multi-pod 환경 지원
 import logging
 import uuid
 from typing import Dict, Optional, List
-from service.mcp_manager.process_manager import MCPProcess
-from service.mcp_manager.models import (
-    MCPServerStatus,
+
+from service.claude_manager.process_manager import ClaudeProcess
+from service.claude_manager.models import (
+    SessionStatus,
     SessionInfo,
     CreateSessionRequest
 )
 from service.redis.redis_client import RedisClient, get_redis_client
-from service.pod.pod_info import get_pod_info, is_same_pod
+from service.pod.pod_info import get_pod_info
 
 logger = logging.getLogger(__name__)
 
+
 class SessionManager:
     """
-    MCP 서버 세션 관리자
+    Claude 세션 관리자
     
     - Redis: 세션 메타데이터의 true source (multi-pod 공유)
     - 로컬 메모리: 현재 pod에서 실행 중인 프로세스 관리
@@ -28,7 +30,7 @@ class SessionManager:
 
     def __init__(self, redis_client: Optional[RedisClient] = None):
         # 로컬 프로세스 저장 (현재 pod에서 실행 중인 프로세스만)
-        self._local_processes: Dict[str, MCPProcess] = {}
+        self._local_processes: Dict[str, ClaudeProcess] = {}
         
         # Redis 클라이언트 (세션 메타데이터 저장용)
         self._redis: Optional[RedisClient] = redis_client
@@ -49,42 +51,42 @@ class SessionManager:
         return self._redis
     
     @property
-    def sessions(self) -> Dict[str, MCPProcess]:
+    def sessions(self) -> Dict[str, ClaudeProcess]:
         """호환성을 위한 sessions 프로퍼티 (로컬 프로세스 반환)"""
         return self._local_processes
 
     async def create_session(self, request: CreateSessionRequest) -> SessionInfo:
         """
-        새로운 MCP 서버 세션 생성
+        새로운 Claude 세션 생성
+        
+        Args:
+            request: 세션 생성 요청
+            
+        Returns:
+            생성된 세션 정보
         """
         session_id = str(uuid.uuid4())
 
-        logger.info(f"Creating new session {session_id} for {request.server_type}")
-        logger.info(f"[{session_id}] Request details:")
-        logger.info(f"[{session_id}]   server_command: {request.server_command}")
-        logger.info(f"[{session_id}]   server_args: {request.server_args}")
-        logger.info(f"[{session_id}]   env_vars: {request.env_vars}")
-        logger.info(f"[{session_id}]   working_dir: {request.working_dir}")
+        logger.info(f"[{session_id}] Creating new Claude session...")
         logger.info(f"[{session_id}]   session_name: {request.session_name}")
-        logger.info(f"[{session_id}]   additional_commands: {request.additional_commands}")
+        logger.info(f"[{session_id}]   working_dir: {request.working_dir}")
+        logger.info(f"[{session_id}]   model: {request.model}")
 
-        # MCPProcess 인스턴스 생성
-        process = MCPProcess(
+        # ClaudeProcess 인스턴스 생성
+        process = ClaudeProcess(
             session_id=session_id,
-            server_type=request.server_type,
-            command=request.server_command,
-            args=request.server_args,
-            env_vars=request.env_vars,
-            working_dir=request.working_dir,
             session_name=request.session_name,
-            additional_commands=request.additional_commands
+            working_dir=request.working_dir,
+            env_vars=request.env_vars,
+            model=request.model,
+            max_turns=request.max_turns
         )
 
-        # 프로세스 시작
-        success = await process.start()
+        # 세션 초기화
+        success = await process.initialize()
 
         if not success:
-            raise RuntimeError(f"Failed to start MCP server: {process.error_message}")
+            raise RuntimeError(f"Failed to initialize session: {process.error_message}")
 
         # 로컬 프로세스 저장
         self._local_processes[session_id] = process
@@ -92,30 +94,29 @@ class SessionManager:
         # Pod 정보 가져오기
         pod_info = get_pod_info()
         
-        # Redis에 세션 메타데이터 저장 (Pod 정보 포함)
+        # SessionInfo 생성
         session_info = SessionInfo(
             session_id=session_id,
             session_name=process.session_name,
-            server_type=request.server_type,
             status=process.status,
             created_at=process.created_at,
             pid=process.pid,
             error_message=process.error_message,
-            server_command=process.command,
-            server_args=process.args,
-            additional_commands=process.additional_commands,
-            mcp_initialized=getattr(process, '_initialized', False),
+            model=process.model,
+            storage_path=process.storage_path,
             pod_name=pod_info.pod_name,
             pod_ip=pod_info.pod_ip
         )
         
-        self._save_session_to_redis(session_id, session_info, process)
+        # Redis에 세션 메타데이터 저장
+        self._save_session_to_redis(session_id, session_info)
 
+        logger.info(f"[{session_id}] ✅ Session created successfully")
         return session_info
 
-    def get_session(self, session_id: str) -> Optional[MCPProcess]:
+    def get_process(self, session_id: str) -> Optional[ClaudeProcess]:
         """
-        세션 조회 (로컬 프로세스)
+        세션 프로세스 조회 (로컬)
         
         로컬 pod에서 실행 중인 프로세스만 반환
         다른 pod의 세션은 Redis에서 메타데이터만 조회 가능
@@ -161,10 +162,10 @@ class SessionManager:
                 local_process = self._local_processes.get(session_id)
                 if local_process:
                     # 프로세스 상태 체크 및 업데이트
-                    if not local_process.is_alive() and local_process.status == MCPServerStatus.RUNNING:
-                        local_process.status = MCPServerStatus.STOPPED
-                        session_data['status'] = MCPServerStatus.STOPPED.value
-                        self.redis.update_session_field(session_id, 'status', MCPServerStatus.STOPPED.value)
+                    if not local_process.is_alive() and local_process.status == SessionStatus.RUNNING:
+                        local_process.status = SessionStatus.STOPPED
+                        session_data['status'] = SessionStatus.STOPPED.value
+                        self.redis.update_session_field(session_id, 'status', SessionStatus.STOPPED.value)
                     else:
                         session_data['status'] = local_process.status.value
                         session_data['pid'] = local_process.pid
@@ -176,29 +177,44 @@ class SessionManager:
         # Redis 없으면 로컬 프로세스만 반환
         for session_id, process in self._local_processes.items():
             # 프로세스 상태 업데이트
-            if not process.is_alive() and process.status == MCPServerStatus.RUNNING:
-                process.status = MCPServerStatus.STOPPED
+            if not process.is_alive() and process.status == SessionStatus.RUNNING:
+                process.status = SessionStatus.STOPPED
 
             sessions_info.append(self._process_to_session_info(session_id, process))
 
         return sessions_info
 
-    async def delete_session(self, session_id: str) -> bool:
-        """세션 삭제 및 프로세스 종료"""
+    async def delete_session(self, session_id: str, cleanup_storage: bool = True) -> bool:
+        """
+        세션 삭제 및 프로세스 종료
+        
+        Args:
+            session_id: 삭제할 세션 ID
+            cleanup_storage: 스토리지도 함께 삭제할지 여부
+            
+        Returns:
+            삭제 성공 여부
+        """
         # 로컬 프로세스 확인
         process = self._local_processes.get(session_id)
 
         if process:
-            logger.info(f"Deleting local session {session_id}")
+            logger.info(f"[{session_id}] Deleting session...")
+            
             # 프로세스 중지
             await process.stop()
+            
+            # 스토리지 정리
+            if cleanup_storage:
+                await process.cleanup_storage()
+            
             # 로컬에서 제거
             del self._local_processes[session_id]
         
         # Redis에서도 삭제
         if self.redis and self.redis.is_connected:
             self.redis.delete_session(session_id)
-            logger.info(f"Deleted session from Redis: {session_id}")
+            logger.info(f"[{session_id}] Session deleted from Redis")
             return True
         
         # Redis 없이 로컬만 삭제한 경우
@@ -213,12 +229,12 @@ class SessionManager:
         ]
 
         for session_id in dead_sessions:
-            logger.info(f"Cleaning up dead session {session_id}")
+            logger.info(f"[{session_id}] Cleaning up dead session")
             await self.delete_session(session_id)
     
     # ========== 헬퍼 메서드 ==========
     
-    def _save_session_to_redis(self, session_id: str, session_info: SessionInfo, process: MCPProcess):
+    def _save_session_to_redis(self, session_id: str, session_info: SessionInfo):
         """세션 정보를 Redis에 저장"""
         if not self.redis or not self.redis.is_connected:
             logger.warning(f"Redis 연결 없음 - 세션 {session_id}는 로컬에만 저장됨")
@@ -227,15 +243,12 @@ class SessionManager:
         session_data = {
             'session_id': session_id,
             'session_name': session_info.session_name,
-            'server_type': session_info.server_type.value if session_info.server_type else None,
             'status': session_info.status.value if session_info.status else None,
             'created_at': session_info.created_at,
             'pid': session_info.pid,
             'error_message': session_info.error_message,
-            'server_command': session_info.server_command,
-            'server_args': session_info.server_args,
-            'additional_commands': session_info.additional_commands,
-            'mcp_initialized': session_info.mcp_initialized,
+            'model': session_info.model,
+            'storage_path': session_info.storage_path,
             'pod_name': session_info.pod_name,
             'pod_ip': session_info.pod_ip
         }
@@ -243,49 +256,49 @@ class SessionManager:
         self.redis.save_session(session_id, session_data)
         logger.debug(f"세션 Redis 저장 완료: {session_id}")
     
-    def _process_to_session_info(self, session_id: str, process: MCPProcess) -> SessionInfo:
-        """MCPProcess를 SessionInfo로 변환"""
+    def _process_to_session_info(self, session_id: str, process: ClaudeProcess) -> SessionInfo:
+        """ClaudeProcess를 SessionInfo로 변환"""
         pod_info = get_pod_info()
         return SessionInfo(
             session_id=session_id,
             session_name=process.session_name,
-            server_type=process.server_type,
             status=process.status,
             created_at=process.created_at,
             pid=process.pid,
             error_message=process.error_message,
-            server_command=process.command,
-            server_args=process.args,
-            additional_commands=process.additional_commands,
-            mcp_initialized=getattr(process, '_initialized', False),
+            model=process.model,
+            storage_path=process.storage_path,
             pod_name=pod_info.pod_name,
             pod_ip=pod_info.pod_ip
         )
     
     def _dict_to_session_info(self, data: dict) -> SessionInfo:
         """딕셔너리를 SessionInfo로 변환"""
-        from service.mcp_manager.models import MCPServerType
-        
-        server_type = data.get('server_type')
-        if isinstance(server_type, str):
-            server_type = MCPServerType(server_type)
-        
         status = data.get('status')
         if isinstance(status, str):
-            status = MCPServerStatus(status)
+            status = SessionStatus(status)
         
         return SessionInfo(
             session_id=data.get('session_id', ''),
             session_name=data.get('session_name'),
-            server_type=server_type,
             status=status,
             created_at=data.get('created_at'),
             pid=data.get('pid'),
             error_message=data.get('error_message'),
-            server_command=data.get('server_command'),
-            server_args=data.get('server_args'),
-            additional_commands=data.get('additional_commands'),
-            mcp_initialized=data.get('mcp_initialized', False),
+            model=data.get('model'),
+            storage_path=data.get('storage_path'),
             pod_name=data.get('pod_name'),
             pod_ip=data.get('pod_ip')
         )
+
+
+# 싱글톤 세션 매니저
+_session_manager: Optional[SessionManager] = None
+
+
+def get_session_manager() -> SessionManager:
+    """세션 매니저 싱글톤 인스턴스 반환"""
+    global _session_manager
+    if _session_manager is None:
+        _session_manager = SessionManager()
+    return _session_manager
