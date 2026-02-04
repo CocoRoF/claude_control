@@ -12,12 +12,28 @@ from service.claude_manager.process_manager import ClaudeProcess
 from service.claude_manager.models import (
     SessionStatus,
     SessionInfo,
-    CreateSessionRequest
+    CreateSessionRequest,
+    MCPConfig
 )
 from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import get_pod_info
 
 logger = logging.getLogger(__name__)
+
+
+def merge_mcp_configs(base: Optional[MCPConfig], override: Optional[MCPConfig]) -> Optional[MCPConfig]:
+    """
+    두 MCP 설정 병합 (override가 우선)
+    """
+    if not base and not override:
+        return None
+    if not base:
+        return override
+    if not override:
+        return base
+    
+    merged_servers = {**base.servers, **override.servers}
+    return MCPConfig(servers=merged_servers)
 
 
 class SessionManager:
@@ -26,6 +42,7 @@ class SessionManager:
     
     - Redis: 세션 메타데이터의 true source (multi-pod 공유)
     - 로컬 메모리: 현재 pod에서 실행 중인 프로세스 관리
+    - 글로벌 MCP: 모든 세션에 자동 적용되는 MCP 설정
     """
 
     def __init__(self, redis_client: Optional[RedisClient] = None):
@@ -34,11 +51,25 @@ class SessionManager:
         
         # Redis 클라이언트 (세션 메타데이터 저장용)
         self._redis: Optional[RedisClient] = redis_client
+        
+        # 글로벌 MCP 설정 (모든 세션에 자동 적용)
+        self._global_mcp_config: Optional[MCPConfig] = None
     
     def set_redis_client(self, redis_client: RedisClient):
         """Redis 클라이언트 설정 (지연 주입)"""
         self._redis = redis_client
         logger.info("✅ SessionManager에 Redis 클라이언트 연결됨")
+    
+    def set_global_mcp_config(self, config: MCPConfig):
+        """글로벌 MCP 설정 설정 (모든 세션에 자동 적용)"""
+        self._global_mcp_config = config
+        if config and config.servers:
+            logger.info(f"✅ 글로벌 MCP 설정 등록됨: {list(config.servers.keys())}")
+    
+    @property
+    def global_mcp_config(self) -> Optional[MCPConfig]:
+        """글로벌 MCP 설정 반환"""
+        return self._global_mcp_config
     
     @property
     def redis(self) -> Optional[RedisClient]:
@@ -71,6 +102,13 @@ class SessionManager:
         logger.info(f"[{session_id}]   session_name: {request.session_name}")
         logger.info(f"[{session_id}]   working_dir: {request.working_dir}")
         logger.info(f"[{session_id}]   model: {request.model}")
+        
+        # 글로벌 MCP 설정과 세션 MCP 설정 병합
+        # 세션 설정이 글로벌 설정보다 우선
+        merged_mcp_config = merge_mcp_configs(self._global_mcp_config, request.mcp_config)
+        
+        if merged_mcp_config and merged_mcp_config.servers:
+            logger.info(f"[{session_id}]   mcp_servers: {list(merged_mcp_config.servers.keys())}")
 
         # ClaudeProcess 인스턴스 생성
         process = ClaudeProcess(
@@ -79,7 +117,8 @@ class SessionManager:
             working_dir=request.working_dir,
             env_vars=request.env_vars,
             model=request.model,
-            max_turns=request.max_turns
+            max_turns=request.max_turns,
+            mcp_config=merged_mcp_config  # 병합된 MCP 설정 사용
         )
 
         # 세션 초기화

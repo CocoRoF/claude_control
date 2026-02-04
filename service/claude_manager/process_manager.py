@@ -5,17 +5,21 @@ claude CLI를 프로세스로 실행하고 관리합니다.
 각 세션은 독립적인 프로세스와 스토리지를 가집니다.
 """
 import asyncio
+import json
 import logging
 import os
 import signal
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from datetime import datetime
 
-from service.claude_manager.models import SessionStatus
+from service.claude_manager.models import SessionStatus, MCPConfig
 from service.utils.utils import now_kst
+
+if TYPE_CHECKING:
+    from service.claude_manager.models import MCPConfig
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,68 @@ CLAUDE_DEFAULT_TIMEOUT = 300.0
 
 # 기본 스토리지 루트 경로
 DEFAULT_STORAGE_ROOT = os.environ.get('CLAUDE_STORAGE_ROOT', '/tmp/claude_sessions')
+
+# Claude Code 관련 환경 변수 키 목록 (이 변수들은 자동으로 세션에 전달됨)
+CLAUDE_ENV_KEYS = [
+    # Anthropic API
+    'ANTHROPIC_API_KEY',
+    'ANTHROPIC_AUTH_TOKEN',
+    'ANTHROPIC_MODEL',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+    
+    # Claude Code 설정
+    'MAX_THINKING_TOKENS',
+    'BASH_DEFAULT_TIMEOUT_MS',
+    'BASH_MAX_TIMEOUT_MS',
+    'BASH_MAX_OUTPUT_LENGTH',
+    
+    # 비활성화 옵션
+    'DISABLE_AUTOUPDATER',
+    'DISABLE_ERROR_REPORTING',
+    'DISABLE_TELEMETRY',
+    'DISABLE_COST_WARNINGS',
+    'DISABLE_PROMPT_CACHING',
+    
+    # 프록시
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'NO_PROXY',
+    
+    # AWS Bedrock
+    'CLAUDE_CODE_USE_BEDROCK',
+    'AWS_REGION',
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'AWS_BEARER_TOKEN_BEDROCK',
+    
+    # Google Vertex AI
+    'CLAUDE_CODE_USE_VERTEX',
+    'GOOGLE_CLOUD_PROJECT',
+    'GOOGLE_CLOUD_REGION',
+    
+    # Microsoft Foundry
+    'CLAUDE_CODE_USE_FOUNDRY',
+    'ANTHROPIC_FOUNDRY_API_KEY',
+    'ANTHROPIC_FOUNDRY_BASE_URL',
+    'ANTHROPIC_FOUNDRY_RESOURCE',
+]
+
+
+def get_claude_env_vars() -> Dict[str, str]:
+    """
+    Claude Code 실행에 필요한 환경 변수 수집
+    
+    Returns:
+        Claude Code에 전달할 환경 변수 딕셔너리
+    """
+    env_vars = {}
+    for key in CLAUDE_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            env_vars[key] = value
+    return env_vars
 
 
 class ClaudeProcess:
@@ -45,13 +111,15 @@ class ClaudeProcess:
         env_vars: Optional[Dict[str, str]] = None,
         model: Optional[str] = None,
         max_turns: Optional[int] = None,
-        storage_root: Optional[str] = None
+        storage_root: Optional[str] = None,
+        mcp_config: Optional[MCPConfig] = None
     ):
         self.session_id = session_id
         self.session_name = session_name
         self.model = model
         self.max_turns = max_turns
         self.env_vars = env_vars or {}
+        self.mcp_config = mcp_config
         
         # 스토리지 설정
         self._storage_root = storage_root or DEFAULT_STORAGE_ROOT
@@ -87,6 +155,7 @@ class ClaudeProcess:
         세션 초기화
         
         스토리지 디렉토리를 생성하고 세션을 준비합니다.
+        MCP 설정이 있으면 .mcp.json 파일을 생성합니다.
         """
         try:
             self.status = SessionStatus.STARTING
@@ -100,10 +169,14 @@ class ClaudeProcess:
             if self.working_dir != self._storage_path:
                 os.makedirs(self.working_dir, exist_ok=True)
             
-            # claude CLI 확인
+            # MCP 설정 파일 생성 (.mcp.json)
+            if self.mcp_config and self.mcp_config.servers:
+                await self._create_mcp_config()
+            
+            # claude CLI 확인 (Claude Code)
             claude_path = shutil.which("claude")
             if claude_path is None:
-                raise FileNotFoundError("claude CLI가 설치되어 있지 않습니다. 'npm install -g @anthropic-ai/claude-cli'로 설치하세요.")
+                raise FileNotFoundError("Claude Code가 설치되어 있지 않습니다. 'npm install -g @anthropic-ai/claude-code'로 설치하세요.")
             
             logger.info(f"[{self.session_id}] Found claude CLI at: {claude_path}")
             
@@ -116,11 +189,36 @@ class ClaudeProcess:
             self.error_message = str(e)
             logger.error(f"[{self.session_id}] Failed to initialize session: {e}")
             return False
+    
+    async def _create_mcp_config(self) -> None:
+        """
+        .mcp.json 파일 생성
+        
+        세션의 working_dir에 MCP 설정 파일을 생성합니다.
+        Claude Code가 이 파일을 자동으로 읽어 MCP 서버에 연결합니다.
+        """
+        if not self.mcp_config:
+            return
+        
+        mcp_json_path = os.path.join(self.working_dir, ".mcp.json")
+        mcp_data = self.mcp_config.to_mcp_json()
+        
+        try:
+            with open(mcp_json_path, 'w', encoding='utf-8') as f:
+                json.dump(mcp_data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"[{self.session_id}] 🔌 MCP config created: {mcp_json_path}")
+            logger.info(f"[{self.session_id}] MCP servers: {list(self.mcp_config.servers.keys())}")
+        except Exception as e:
+            logger.error(f"[{self.session_id}] Failed to create MCP config: {e}")
 
     async def execute(
         self, 
         prompt: str, 
-        timeout: float = CLAUDE_DEFAULT_TIMEOUT
+        timeout: float = CLAUDE_DEFAULT_TIMEOUT,
+        skip_permissions: Optional[bool] = None,
+        system_prompt: Optional[str] = None,
+        max_turns: Optional[int] = None
     ) -> Dict:
         """
         Claude에게 프롬프트 실행
@@ -128,6 +226,9 @@ class ClaudeProcess:
         Args:
             prompt: Claude에게 전달할 프롬프트
             timeout: 실행 타임아웃 (초)
+            skip_permissions: 권한 프롬프트 건너뛰기 (None이면 환경변수 사용)
+            system_prompt: 추가 시스템 프롬프트 (자율 모드 지침 등)
+            max_turns: 이 실행의 최대 턴 수 (None이면 세션 설정 사용)
             
         Returns:
             실행 결과 딕셔너리 (success, output, error, cost_usd, duration_ms)
@@ -142,25 +243,44 @@ class ClaudeProcess:
             start_time = datetime.now()
             
             try:
-                # 환경 변수 준비
+                # 환경 변수 준비 (시스템 환경 변수 + Claude 관련 환경 변수 + 사용자 지정 환경 변수)
                 env = os.environ.copy()
-                env.update(self.env_vars)
+                env.update(get_claude_env_vars())  # Claude Code 관련 환경 변수 자동 추가
+                env.update(self.env_vars)  # 세션별 사용자 지정 환경 변수
                 
                 # claude 명령어 구성
                 cmd = ["claude", "--print"]
+                
+                # 권한 프롬프트 건너뛰기 옵션 (자율 모드 필수)
+                # 1. 함수 인자로 지정된 경우 우선
+                # 2. 환경 변수 CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS 확인
+                should_skip_permissions = skip_permissions
+                if should_skip_permissions is None:
+                    env_skip = os.environ.get('CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS', 'true').lower()
+                    should_skip_permissions = env_skip in ('true', '1', 'yes', 'on')
+                
+                if should_skip_permissions:
+                    cmd.append("--dangerously-skip-permissions")
+                    logger.info(f"[{self.session_id}] 🤖 Autonomous mode: --dangerously-skip-permissions enabled")
                 
                 # 모델 지정
                 if self.model:
                     cmd.extend(["--model", self.model])
                 
-                # 최대 턴 수 지정
-                if self.max_turns:
-                    cmd.extend(["--max-turns", str(self.max_turns)])
+                # 최대 턴 수 지정 (실행별 설정 > 세션 설정)
+                effective_max_turns = max_turns or self.max_turns
+                if effective_max_turns:
+                    cmd.extend(["--max-turns", str(effective_max_turns)])
+                
+                # 시스템 프롬프트 추가 (자율 모드 지침)
+                if system_prompt:
+                    cmd.extend(["--append-system-prompt", system_prompt])
+                    logger.info(f"[{self.session_id}] 📝 Custom system prompt applied")
                 
                 # 프롬프트 추가
                 cmd.extend(["-p", prompt])
                 
-                logger.info(f"[{self.session_id}] Executing: {' '.join(cmd)}")
+                logger.info(f"[{self.session_id}] Executing: {' '.join(cmd[:5])}...")  # 보안을 위해 일부만 로깅
                 
                 # 프로세스 실행
                 self._current_process = await asyncio.create_subprocess_exec(

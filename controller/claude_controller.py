@@ -112,7 +112,10 @@ async def execute_prompt(
     try:
         result = await process.execute(
             prompt=request.prompt,
-            timeout=request.timeout or 300.0
+            timeout=request.timeout or 600.0,
+            skip_permissions=request.skip_permissions,
+            system_prompt=request.system_prompt,
+            max_turns=request.max_turns
         )
         
         return ExecuteResponse(

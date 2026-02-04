@@ -11,7 +11,12 @@ from service.claude_manager.models import (
     ExecuteResponse,
     StorageFile,
     StorageListResponse,
-    StorageFileContent
+    StorageFileContent,
+    # MCP 설정 모델
+    MCPConfig,
+    MCPServerStdio,
+    MCPServerHTTP,
+    MCPServerSSE,
 )
 from service.claude_manager.session_manager import SessionManager, get_session_manager
 from service.claude_manager.process_manager import ClaudeProcess
@@ -26,6 +31,11 @@ __all__ = [
     'StorageFile',
     'StorageListResponse',
     'StorageFileContent',
+    # MCP Models
+    'MCPConfig',
+    'MCPServerStdio',
+    'MCPServerHTTP',
+    'MCPServerSSE',
     # Managers
     'SessionManager',
     'get_session_manager',

@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +10,24 @@ from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import init_pod_info, get_pod_info
 from service.middleware.session_router import SessionRoutingMiddleware
 from service.proxy.internal_proxy import get_internal_proxy
+from service.mcp_loader import MCPLoader, get_global_mcp_config
 import uvicorn
+
+# .env 파일 로드
+try:
+    from dotenv import load_dotenv
+    # 프로젝트 루트의 .env 파일 로드
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ Loaded environment from {env_path}")
+    else:
+        # .env.example이 있으면 안내 메시지 출력
+        example_path = Path(__file__).parent / ".env.example"
+        if example_path.exists():
+            print(f"ℹ️  No .env file found. Copy .env.example to .env and configure it.")
+except ImportError:
+    print("⚠️  python-dotenv not installed. Environment variables must be set manually.")
 
 # 로깅 설정
 logging.basicConfig(
@@ -91,6 +109,18 @@ async def lifespan(app: FastAPI):
     
     # SessionManager에 Redis 클라이언트 주입
     session_manager.set_redis_client(redis_client)
+    
+    # MCP 설정 및 도구 자동 로드
+    print_step_banner("MCP", "MCP LOADER", "Loading MCP configs and tools...")
+    mcp_loader = MCPLoader()
+    mcp_config = mcp_loader.load_all()
+    app.state.mcp_loader = mcp_loader
+    app.state.global_mcp_config = mcp_config
+    
+    # SessionManager에 글로벌 MCP 설정 주입
+    session_manager.set_global_mcp_config(mcp_config)
+    logger.info(f"   - MCP Servers: {mcp_loader.get_server_count()}")
+    logger.info(f"   - Custom Tools: {mcp_loader.get_tool_count()}")
     
     print_step_banner("READY", "CLAUDE CONTROL READY", "All systems operational! 🎉")
     logger.info("🎉 Claude Control startup complete! Ready to serve requests.")

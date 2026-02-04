@@ -5,3 +5,12 @@ pydantic-settings>=2.5.0
 python-multipart>=0.0.9
 httpx>=0.28.0
 redis>=7.0.0
+python-dotenv>=1.0.0
+
+# MCP (Model Context Protocol) - Optional
+# pip install mcp
+mcp>=1.0.0
+
+# LangChain (for tool integration) - Optional
+# pip install langchain-core
+langchain-core>=0.3.0
