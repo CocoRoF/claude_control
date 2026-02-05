@@ -93,6 +93,11 @@ CLAUDE_ENV_KEYS = [
     'ANTHROPIC_FOUNDRY_API_KEY',
     'ANTHROPIC_FOUNDRY_BASE_URL',
     'ANTHROPIC_FOUNDRY_RESOURCE',
+
+    # GitHub (for git push, PR creation)
+    'GITHUB_TOKEN',
+    'GH_TOKEN',
+    'GITHUB_USERNAME',
 ]
 
 
