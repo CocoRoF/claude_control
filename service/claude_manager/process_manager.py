@@ -336,14 +336,18 @@ class ClaudeProcess:
                     cmd.extend(["--append-system-prompt", system_prompt])
                     logger.info(f"[{self.session_id}] 📝 Custom system prompt applied")
 
-                # Add the prompt
-                cmd.extend(["-p", prompt])
+                # Add the prompt - use stdin for long prompts to avoid command line length limits
+                use_stdin = len(prompt) > 1000
+                if not use_stdin:
+                    cmd.extend(["-p", prompt])
 
                 logger.info(f"[{self.session_id}] Executing: {' '.join(cmd[:5])}...")  # Log partial for security
+                logger.info(f"[{self.session_id}] Prompt length: {len(prompt)} chars, use_stdin: {use_stdin}")
 
                 # Execute process
                 self._current_process = await asyncio.create_subprocess_exec(
                     *cmd,
+                    stdin=asyncio.subprocess.PIPE if use_stdin else None,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
@@ -353,10 +357,17 @@ class ClaudeProcess:
 
                 # Collect output
                 try:
-                    stdout, stderr = await asyncio.wait_for(
-                        self._current_process.communicate(),
-                        timeout=timeout
-                    )
+                    if use_stdin:
+                        # Send prompt via stdin
+                        stdout, stderr = await asyncio.wait_for(
+                            self._current_process.communicate(input=prompt.encode('utf-8')),
+                            timeout=timeout
+                        )
+                    else:
+                        stdout, stderr = await asyncio.wait_for(
+                            self._current_process.communicate(),
+                            timeout=timeout
+                        )
                 except asyncio.TimeoutError:
                     logger.error(f"[{self.session_id}] Execution timed out after {timeout}s")
                     await self._kill_current_process()
