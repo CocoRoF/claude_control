@@ -1,13 +1,14 @@
 """
-Claude Code 프로세스 관리
+Claude Code Process Manager
 
-claude CLI를 프로세스로 실행하고 관리합니다.
-각 세션은 독립적인 프로세스와 스토리지를 가집니다.
+Manages Claude CLI as subprocess instances.
+Each session has its own independent process and storage directory.
 """
 import asyncio
 import json
 import logging
 import os
+import platform
 import signal
 import shutil
 import tempfile
@@ -23,16 +24,31 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# 버퍼 제한: 16MB
+# Buffer limit: 16MB
 STDIO_BUFFER_LIMIT = 16 * 1024 * 1024
 
-# Claude 실행 타임아웃 (기본 5분)
+# Claude execution timeout (default 5 minutes)
 CLAUDE_DEFAULT_TIMEOUT = 300.0
 
-# 기본 스토리지 루트 경로
-DEFAULT_STORAGE_ROOT = os.environ.get('CLAUDE_STORAGE_ROOT', '/tmp/claude_sessions')
+# Default storage root path (cross-platform)
+def _get_default_storage_root() -> str:
+    """Get platform-appropriate default storage root."""
+    env_storage = os.environ.get('CLAUDE_STORAGE_ROOT')
+    if env_storage:
+        return env_storage
 
-# Claude Code 관련 환경 변수 키 목록 (이 변수들은 자동으로 세션에 전달됨)
+    # Use platform-appropriate temp directory
+    if platform.system() == 'Windows':
+        # On Windows, use LOCALAPPDATA or TEMP
+        base = os.environ.get('LOCALAPPDATA') or tempfile.gettempdir()
+        return str(Path(base) / 'claude_sessions')
+    else:
+        # On Unix-like systems, use /tmp
+        return '/tmp/claude_sessions'
+
+DEFAULT_STORAGE_ROOT = _get_default_storage_root()
+
+# Claude Code environment variable keys (automatically passed to sessions)
 CLAUDE_ENV_KEYS = [
     # Anthropic API
     'ANTHROPIC_API_KEY',
@@ -41,37 +57,37 @@ CLAUDE_ENV_KEYS = [
     'ANTHROPIC_DEFAULT_SONNET_MODEL',
     'ANTHROPIC_DEFAULT_OPUS_MODEL',
     'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-    
-    # Claude Code 설정
+
+    # Claude Code settings
     'MAX_THINKING_TOKENS',
     'BASH_DEFAULT_TIMEOUT_MS',
     'BASH_MAX_TIMEOUT_MS',
     'BASH_MAX_OUTPUT_LENGTH',
-    
-    # 비활성화 옵션
+
+    # Disable options
     'DISABLE_AUTOUPDATER',
     'DISABLE_ERROR_REPORTING',
     'DISABLE_TELEMETRY',
     'DISABLE_COST_WARNINGS',
     'DISABLE_PROMPT_CACHING',
-    
-    # 프록시
+
+    # Proxy settings
     'HTTP_PROXY',
     'HTTPS_PROXY',
     'NO_PROXY',
-    
+
     # AWS Bedrock
     'CLAUDE_CODE_USE_BEDROCK',
     'AWS_REGION',
     'AWS_ACCESS_KEY_ID',
     'AWS_SECRET_ACCESS_KEY',
     'AWS_BEARER_TOKEN_BEDROCK',
-    
+
     # Google Vertex AI
     'CLAUDE_CODE_USE_VERTEX',
     'GOOGLE_CLOUD_PROJECT',
     'GOOGLE_CLOUD_REGION',
-    
+
     # Microsoft Foundry
     'CLAUDE_CODE_USE_FOUNDRY',
     'ANTHROPIC_FOUNDRY_API_KEY',
@@ -82,10 +98,10 @@ CLAUDE_ENV_KEYS = [
 
 def get_claude_env_vars() -> Dict[str, str]:
     """
-    Claude Code 실행에 필요한 환경 변수 수집
-    
+    Collect environment variables required for Claude Code execution.
+
     Returns:
-        Claude Code에 전달할 환경 변수 딕셔너리
+        Dictionary of environment variables to pass to Claude Code.
     """
     env_vars = {}
     for key in CLAUDE_ENV_KEYS:
@@ -95,12 +111,37 @@ def get_claude_env_vars() -> Dict[str, str]:
     return env_vars
 
 
+def find_claude_executable() -> Optional[str]:
+    """
+    Find the Claude CLI executable path (cross-platform).
+
+    On Windows, searches for 'claude.cmd' or 'claude.exe' in addition to 'claude'.
+    On Unix-like systems, searches for 'claude'.
+
+    Returns:
+        Full path to Claude CLI executable, or None if not found.
+    """
+    # Try the basic 'claude' command first
+    claude_path = shutil.which("claude")
+    if claude_path:
+        return claude_path
+
+    # On Windows, try additional extensions
+    if platform.system() == 'Windows':
+        for ext in ['.cmd', '.exe', '.bat']:
+            claude_path = shutil.which(f"claude{ext}")
+            if claude_path:
+                return claude_path
+
+    return None
+
+
 class ClaudeProcess:
     """
-    개별 Claude Code 프로세스
-    
-    claude CLI를 실행하고 관리합니다.
-    각 인스턴스는 고유한 세션 ID와 스토리지 경로를 가집니다.
+    Individual Claude Code Process.
+
+    Manages a Claude CLI subprocess.
+    Each instance has a unique session ID and storage path.
     """
 
     def __init__(
@@ -120,118 +161,130 @@ class ClaudeProcess:
         self.max_turns = max_turns
         self.env_vars = env_vars or {}
         self.mcp_config = mcp_config
-        
-        # 스토리지 설정
+
+        # Storage configuration (using Path for cross-platform compatibility)
         self._storage_root = storage_root or DEFAULT_STORAGE_ROOT
-        self._storage_path = os.path.join(self._storage_root, session_id)
-        
-        # working_dir이 지정되지 않으면 스토리지 경로 사용
+        self._storage_path = str(Path(self._storage_root) / session_id)
+
+        # Use storage path as working directory if not specified
         self.working_dir = working_dir or self._storage_path
-        
-        # 프로세스 상태
+
+        # Process state
         self.process: Optional[asyncio.subprocess.Process] = None
         self.status = SessionStatus.STOPPED
         self.error_message: Optional[str] = None
         self.created_at = now_kst()
-        
-        # 현재 실행 중인 프로세스 (execute 명령용)
+
+        # Claude CLI path (set during initialize)
+        self._claude_path: Optional[str] = None
+
+        # Current running process (for execute commands)
         self._current_process: Optional[asyncio.subprocess.Process] = None
         self._execution_lock = asyncio.Lock()
 
     @property
     def storage_path(self) -> str:
-        """세션 전용 스토리지 경로"""
+        """Session-specific storage path."""
         return self._storage_path
-    
+
     @property
     def pid(self) -> Optional[int]:
-        """현재 실행 중인 프로세스 ID"""
+        """Current running process ID."""
         if self._current_process:
             return self._current_process.pid
         return None
 
     async def initialize(self) -> bool:
         """
-        세션 초기화
-        
-        스토리지 디렉토리를 생성하고 세션을 준비합니다.
-        MCP 설정이 있으면 .mcp.json 파일을 생성합니다.
+        Initialize the session.
+
+        Creates the storage directory and prepares the session.
+        Creates .mcp.json file if MCP configuration is provided.
+
+        Returns:
+            True if initialization succeeds, False otherwise.
         """
         try:
             self.status = SessionStatus.STARTING
             logger.info(f"[{self.session_id}] Initializing Claude session...")
-            
-            # 스토리지 디렉토리 생성
-            os.makedirs(self._storage_path, exist_ok=True)
+
+            # Create storage directory (using Path for cross-platform compatibility)
+            Path(self._storage_path).mkdir(parents=True, exist_ok=True)
             logger.info(f"[{self.session_id}] Storage created: {self._storage_path}")
-            
-            # working_dir도 생성 (다른 경로인 경우)
+
+            # Create working_dir if different from storage path
             if self.working_dir != self._storage_path:
-                os.makedirs(self.working_dir, exist_ok=True)
-            
-            # MCP 설정 파일 생성 (.mcp.json)
+                Path(self.working_dir).mkdir(parents=True, exist_ok=True)
+
+            # Create MCP configuration file (.mcp.json)
             if self.mcp_config and self.mcp_config.servers:
                 await self._create_mcp_config()
-            
-            # claude CLI 확인 (Claude Code)
-            claude_path = shutil.which("claude")
+
+            # Find Claude CLI executable (cross-platform)
+            claude_path = find_claude_executable()
             if claude_path is None:
-                raise FileNotFoundError("Claude Code가 설치되어 있지 않습니다. 'npm install -g @anthropic-ai/claude-code'로 설치하세요.")
-            
+                raise FileNotFoundError(
+                    "Claude Code is not installed. "
+                    "Install it with: 'npm install -g @anthropic-ai/claude-code'"
+                )
+
+            # Store Claude CLI path for use in execute()
+            self._claude_path = claude_path
+
             logger.info(f"[{self.session_id}] Found claude CLI at: {claude_path}")
-            
+
             self.status = SessionStatus.RUNNING
             logger.info(f"[{self.session_id}] ✅ Session initialized successfully")
             return True
-            
+
         except Exception as e:
             self.status = SessionStatus.ERROR
             self.error_message = str(e)
             logger.error(f"[{self.session_id}] Failed to initialize session: {e}")
             return False
-    
+
     async def _create_mcp_config(self) -> None:
         """
-        .mcp.json 파일 생성
-        
-        세션의 working_dir에 MCP 설정 파일을 생성합니다.
-        Claude Code가 이 파일을 자동으로 읽어 MCP 서버에 연결합니다.
+        Create .mcp.json configuration file.
+
+        Creates MCP configuration file in the session's working_dir.
+        Claude Code automatically reads this file to connect to MCP servers.
         """
         if not self.mcp_config:
             return
-        
-        mcp_json_path = os.path.join(self.working_dir, ".mcp.json")
+
+        mcp_json_path = Path(self.working_dir) / ".mcp.json"
         mcp_data = self.mcp_config.to_mcp_json()
-        
+
         try:
             with open(mcp_json_path, 'w', encoding='utf-8') as f:
                 json.dump(mcp_data, f, indent=2, ensure_ascii=False)
-            
+
             logger.info(f"[{self.session_id}] 🔌 MCP config created: {mcp_json_path}")
             logger.info(f"[{self.session_id}] MCP servers: {list(self.mcp_config.servers.keys())}")
         except Exception as e:
             logger.error(f"[{self.session_id}] Failed to create MCP config: {e}")
 
     async def execute(
-        self, 
-        prompt: str, 
+        self,
+        prompt: str,
         timeout: float = CLAUDE_DEFAULT_TIMEOUT,
         skip_permissions: Optional[bool] = None,
         system_prompt: Optional[str] = None,
         max_turns: Optional[int] = None
     ) -> Dict:
         """
-        Claude에게 프롬프트 실행
-        
+        Execute a prompt with Claude.
+
         Args:
-            prompt: Claude에게 전달할 프롬프트
-            timeout: 실행 타임아웃 (초)
-            skip_permissions: 권한 프롬프트 건너뛰기 (None이면 환경변수 사용)
-            system_prompt: 추가 시스템 프롬프트 (자율 모드 지침 등)
-            max_turns: 이 실행의 최대 턴 수 (None이면 세션 설정 사용)
-            
+            prompt: The prompt to send to Claude.
+            timeout: Execution timeout in seconds.
+            skip_permissions: Skip permission prompts (None uses environment variable).
+            system_prompt: Additional system prompt (for autonomous mode instructions).
+            max_turns: Maximum turns for this execution (None uses session setting).
+
         Returns:
-            실행 결과 딕셔너리 (success, output, error, cost_usd, duration_ms)
+            Result dictionary with success, output, error, cost_usd, duration_ms.
         """
         async with self._execution_lock:
             if self.status != SessionStatus.RUNNING:
@@ -239,50 +292,51 @@ class ClaudeProcess:
                     "success": False,
                     "error": f"Session is not running (status: {self.status})"
                 }
-            
+
             start_time = datetime.now()
-            
+
             try:
-                # 환경 변수 준비 (시스템 환경 변수 + Claude 관련 환경 변수 + 사용자 지정 환경 변수)
+                # Prepare environment variables (system + Claude-related + user-specified)
                 env = os.environ.copy()
-                env.update(get_claude_env_vars())  # Claude Code 관련 환경 변수 자동 추가
-                env.update(self.env_vars)  # 세션별 사용자 지정 환경 변수
-                
-                # claude 명령어 구성
-                cmd = ["claude", "--print"]
-                
-                # 권한 프롬프트 건너뛰기 옵션 (자율 모드 필수)
-                # 1. 함수 인자로 지정된 경우 우선
-                # 2. 환경 변수 CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS 확인
+                env.update(get_claude_env_vars())  # Auto-add Claude Code environment variables
+                env.update(self.env_vars)  # Session-specific user environment variables
+
+                # Build claude command (use stored full path for cross-platform compatibility)
+                claude_cmd = self._claude_path or find_claude_executable() or "claude"
+                cmd = [claude_cmd, "--print"]
+
+                # Skip permission prompts option (required for autonomous mode)
+                # 1. Function argument takes priority
+                # 2. Check CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS environment variable
                 should_skip_permissions = skip_permissions
                 if should_skip_permissions is None:
                     env_skip = os.environ.get('CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS', 'true').lower()
                     should_skip_permissions = env_skip in ('true', '1', 'yes', 'on')
-                
+
                 if should_skip_permissions:
                     cmd.append("--dangerously-skip-permissions")
                     logger.info(f"[{self.session_id}] 🤖 Autonomous mode: --dangerously-skip-permissions enabled")
-                
-                # 모델 지정
+
+                # Specify model
                 if self.model:
                     cmd.extend(["--model", self.model])
-                
-                # 최대 턴 수 지정 (실행별 설정 > 세션 설정)
+
+                # Specify max turns (execution setting > session setting)
                 effective_max_turns = max_turns or self.max_turns
                 if effective_max_turns:
                     cmd.extend(["--max-turns", str(effective_max_turns)])
-                
-                # 시스템 프롬프트 추가 (자율 모드 지침)
+
+                # Add system prompt (autonomous mode instructions)
                 if system_prompt:
                     cmd.extend(["--append-system-prompt", system_prompt])
                     logger.info(f"[{self.session_id}] 📝 Custom system prompt applied")
-                
-                # 프롬프트 추가
+
+                # Add the prompt
                 cmd.extend(["-p", prompt])
-                
-                logger.info(f"[{self.session_id}] Executing: {' '.join(cmd[:5])}...")  # 보안을 위해 일부만 로깅
-                
-                # 프로세스 실행
+
+                logger.info(f"[{self.session_id}] Executing: {' '.join(cmd[:5])}...")  # Log partial for security
+
+                # Execute process
                 self._current_process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
@@ -291,8 +345,8 @@ class ClaudeProcess:
                     cwd=self.working_dir,
                     limit=STDIO_BUFFER_LIMIT
                 )
-                
-                # 출력 수집
+
+                # Collect output
                 try:
                     stdout, stderr = await asyncio.wait_for(
                         self._current_process.communicate(),
@@ -305,11 +359,11 @@ class ClaudeProcess:
                         "success": False,
                         "error": f"Execution timed out after {timeout} seconds"
                     }
-                
+
                 duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
                 stdout_text = stdout.decode('utf-8', errors='replace') if stdout else ""
                 stderr_text = stderr.decode('utf-8', errors='replace') if stderr else ""
-                
+
                 if self._current_process.returncode == 0:
                     logger.info(f"[{self.session_id}] ✅ Execution completed in {duration_ms}ms")
                     return {
@@ -325,7 +379,7 @@ class ClaudeProcess:
                         "error": stderr_text or f"Process exited with code {self._current_process.returncode}",
                         "duration_ms": duration_ms
                     }
-                    
+
             except Exception as e:
                 logger.error(f"[{self.session_id}] Execution error: {e}", exc_info=True)
                 return {
@@ -334,9 +388,9 @@ class ClaudeProcess:
                 }
             finally:
                 self._current_process = None
-    
+
     async def _kill_current_process(self):
-        """현재 실행 중인 프로세스 강제 종료"""
+        """Forcefully terminate the currently running process."""
         if self._current_process:
             try:
                 self._current_process.kill()
@@ -346,21 +400,21 @@ class ClaudeProcess:
 
     def list_storage_files(self, subpath: str = "") -> List[Dict]:
         """
-        스토리지 파일 목록 조회
-        
+        List files in the storage directory.
+
         Args:
-            subpath: 하위 경로 (빈 문자열이면 루트)
-            
+            subpath: Subdirectory path (empty string for root).
+
         Returns:
-            파일 정보 리스트
+            List of file information dictionaries.
         """
         target_path = Path(self._storage_path)
         if subpath:
             target_path = target_path / subpath
-        
+
         if not target_path.exists():
             return []
-        
+
         files = []
         try:
             for item in target_path.iterdir():
@@ -374,32 +428,32 @@ class ClaudeProcess:
                 })
         except Exception as e:
             logger.error(f"[{self.session_id}] Failed to list files: {e}")
-        
+
         return files
-    
+
     def read_storage_file(self, file_path: str, encoding: str = "utf-8") -> Optional[Dict]:
         """
-        스토리지 파일 내용 읽기
-        
+        Read storage file content.
+
         Args:
-            file_path: 파일 경로 (스토리지 루트 기준 상대 경로)
-            encoding: 파일 인코딩
-            
+            file_path: File path (relative to storage root).
+            encoding: File encoding.
+
         Returns:
-            파일 내용 딕셔너리 또는 None
+            File content dictionary or None.
         """
         target_path = Path(self._storage_path) / file_path
-        
-        # 경로 검증 (디렉토리 트래버설 방지)
+
+        # Path validation (prevent directory traversal)
         try:
             target_path.resolve().relative_to(Path(self._storage_path).resolve())
         except ValueError:
             logger.warning(f"[{self.session_id}] Invalid file path: {file_path}")
             return None
-        
+
         if not target_path.exists() or not target_path.is_file():
             return None
-        
+
         try:
             content = target_path.read_text(encoding=encoding)
             return {
@@ -413,29 +467,30 @@ class ClaudeProcess:
             return None
 
     async def stop(self):
-        """세션 중지 및 정리"""
+        """Stop session and cleanup resources."""
         try:
             logger.info(f"[{self.session_id}] Stopping session...")
-            
-            # 현재 실행 중인 프로세스 종료
+
+            # Terminate currently running process
             await self._kill_current_process()
-            
+
             self.status = SessionStatus.STOPPED
             logger.info(f"[{self.session_id}] Session stopped")
-            
+
         except Exception as e:
             logger.error(f"[{self.session_id}] Error stopping session: {e}")
             self.status = SessionStatus.STOPPED
-    
+
     async def cleanup_storage(self):
-        """스토리지 디렉토리 삭제"""
+        """Delete storage directory."""
         try:
-            if os.path.exists(self._storage_path):
-                shutil.rmtree(self._storage_path)
+            storage_path = Path(self._storage_path)
+            if storage_path.exists():
+                shutil.rmtree(storage_path)
                 logger.info(f"[{self.session_id}] Storage cleaned up: {self._storage_path}")
         except Exception as e:
             logger.error(f"[{self.session_id}] Failed to cleanup storage: {e}")
 
     def is_alive(self) -> bool:
-        """세션이 활성 상태인지 확인"""
+        """Check if session is active."""
         return self.status == SessionStatus.RUNNING

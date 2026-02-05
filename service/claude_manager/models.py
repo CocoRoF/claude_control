@@ -1,7 +1,7 @@
 """
 Data models for Claude Control
 
-Claude Code 세션 관리를 위한 데이터 모델 정의
+Data model definitions for Claude Code session management.
 """
 from enum import Enum
 from typing import Optional, Dict, Any, List, Union, Literal
@@ -10,7 +10,7 @@ from datetime import datetime
 
 
 class SessionStatus(str, Enum):
-    """Claude 세션 상태"""
+    """Claude session status."""
     STARTING = "starting"
     RUNNING = "running"
     STOPPED = "stopped"
@@ -18,52 +18,52 @@ class SessionStatus(str, Enum):
 
 
 # =============================================================================
-# MCP (Model Context Protocol) 설정 모델
+# MCP (Model Context Protocol) Configuration Models
 # =============================================================================
 
 class MCPServerStdio(BaseModel):
     """
-    STDIO 트랜스포트 MCP 서버 설정
-    
-    로컬 프로세스로 실행되는 MCP 서버 (예: npx, python 스크립트)
+    STDIO transport MCP server configuration.
+
+    For MCP servers running as local processes (e.g., npx, python scripts).
     """
     type: Literal["stdio"] = "stdio"
-    command: str = Field(..., description="실행할 명령어 (예: 'npx', 'python')")
-    args: List[str] = Field(default_factory=list, description="명령어 인자")
-    env: Optional[Dict[str, str]] = Field(default=None, description="환경 변수")
+    command: str = Field(..., description="Command to execute (e.g., 'npx', 'python')")
+    args: List[str] = Field(default_factory=list, description="Command arguments")
+    env: Optional[Dict[str, str]] = Field(default=None, description="Environment variables")
 
 
 class MCPServerHTTP(BaseModel):
     """
-    HTTP 트랜스포트 MCP 서버 설정
-    
-    원격 HTTP 기반 MCP 서버 (예: Notion, GitHub)
+    HTTP transport MCP server configuration.
+
+    For remote HTTP-based MCP servers (e.g., Notion, GitHub).
     """
     type: Literal["http"] = "http"
-    url: str = Field(..., description="MCP 서버 URL (예: 'https://mcp.notion.com/mcp')")
-    headers: Optional[Dict[str, str]] = Field(default=None, description="인증 헤더")
+    url: str = Field(..., description="MCP server URL (e.g., 'https://mcp.notion.com/mcp')")
+    headers: Optional[Dict[str, str]] = Field(default=None, description="Authentication headers")
 
 
 class MCPServerSSE(BaseModel):
     """
-    SSE 트랜스포트 MCP 서버 설정 (deprecated, HTTP 사용 권장)
+    SSE transport MCP server configuration (deprecated, use HTTP instead).
     """
     type: Literal["sse"] = "sse"
-    url: str = Field(..., description="SSE 서버 URL")
-    headers: Optional[Dict[str, str]] = Field(default=None, description="인증 헤더")
+    url: str = Field(..., description="SSE server URL")
+    headers: Optional[Dict[str, str]] = Field(default=None, description="Authentication headers")
 
 
-# MCP 서버 설정 Union 타입
+# MCP server configuration Union type
 MCPServerConfig = Union[MCPServerStdio, MCPServerHTTP, MCPServerSSE]
 
 
 class MCPConfig(BaseModel):
     """
-    MCP 서버 설정 컬렉션
-    
-    여러 MCP 서버를 이름으로 관리합니다.
-    이 설정은 세션의 .mcp.json 파일로 생성됩니다.
-    
+    MCP server configuration collection.
+
+    Manages multiple MCP servers by name.
+    This configuration is generated as the session's .mcp.json file.
+
     Example:
         {
             "github": {"type": "http", "url": "https://api.githubcopilot.com/mcp/"},
@@ -72,15 +72,15 @@ class MCPConfig(BaseModel):
     """
     servers: Dict[str, MCPServerConfig] = Field(
         default_factory=dict,
-        description="MCP 서버 설정 (이름 -> 설정)"
+        description="MCP server configurations (name -> config)"
     )
-    
+
     def to_mcp_json(self) -> Dict[str, Any]:
         """
-        .mcp.json 파일 형식으로 변환
-        
+        Convert to .mcp.json file format.
+
         Returns:
-            Claude Code가 인식하는 .mcp.json 형식의 딕셔너리
+            Dictionary in .mcp.json format recognized by Claude Code.
         """
         mcp_servers = {}
         for name, config in self.servers.items():
@@ -101,68 +101,68 @@ class MCPConfig(BaseModel):
             else:
                 continue
             mcp_servers[name] = server_config
-        
+
         return {"mcpServers": mcp_servers}
 
 
 # =============================================================================
-# 세션 관리 모델
+# Session Management Models
 # =============================================================================
 
 class CreateSessionRequest(BaseModel):
     """
-    세션 생성 요청
-    
-    Claude Code를 실행할 새로운 세션을 생성합니다.
-    각 세션은 독립적인 작업 디렉토리(storage)를 가집니다.
+    Session creation request.
+
+    Creates a new session to run Claude Code.
+    Each session has its own independent working directory (storage).
     """
     session_name: Optional[str] = Field(
-        default=None, 
-        description="세션 이름 (식별용)"
+        default=None,
+        description="Session name (for identification)"
     )
     working_dir: Optional[str] = Field(
-        default=None, 
-        description="작업 디렉토리 (미지정시 자동 생성)"
+        default=None,
+        description="Working directory (auto-generated if not specified)"
     )
     env_vars: Optional[Dict[str, str]] = Field(
-        default=None, 
-        description="추가 환경 변수"
+        default=None,
+        description="Additional environment variables"
     )
     model: Optional[str] = Field(
         default=None,
-        description="사용할 Claude 모델 (예: claude-sonnet-4-20250514)"
+        description="Claude model to use (e.g., claude-sonnet-4-20250514)"
     )
     max_turns: Optional[int] = Field(
         default=50,
-        description="최대 대화 턴 수 (자율 모드에서 충분한 턴 필요)"
+        description="Maximum conversation turns (need sufficient turns for autonomous mode)"
     )
-    
-    # 자율 모드 설정
+
+    # Autonomous mode settings
     autonomous: Optional[bool] = Field(
         default=True,
-        description="자율 모드 - Claude가 질문 없이 스스로 작업 수행"
+        description="Autonomous mode - Claude performs tasks without asking questions"
     )
     system_prompt: Optional[str] = Field(
         default=None,
-        description="추가 시스템 프롬프트 (기본 프롬프트에 추가됨)"
+        description="Additional system prompt (appended to default prompt)"
     )
     allowed_tools: Optional[List[str]] = Field(
         default=None,
-        description="허용할 도구 목록 (None이면 모든 도구 허용)"
+        description="List of allowed tools (None allows all tools)"
     )
-    
-    # MCP 서버 설정
+
+    # MCP server settings
     mcp_config: Optional[MCPConfig] = Field(
         default=None,
-        description="MCP 서버 설정 - 세션에서 사용할 MCP 도구들"
+        description="MCP server configuration - MCP tools to use in session"
     )
 
 
 class SessionInfo(BaseModel):
     """
-    세션 정보 응답
-    
-    세션의 현재 상태와 메타데이터를 포함합니다.
+    Session information response.
+
+    Contains current state and metadata of the session.
     """
     session_id: str
     session_name: Optional[str] = None
@@ -170,76 +170,74 @@ class SessionInfo(BaseModel):
     created_at: datetime
     pid: Optional[int] = None
     error_message: Optional[str] = None
-    
-    # Claude 관련 정보
+
+    # Claude-related information
     model: Optional[str] = None
-    
-    # 세션 스토리지 경로
+
+    # Session storage path
     storage_path: Optional[str] = Field(
-        default=None, 
-        description="세션 전용 스토리지 경로"
+        default=None,
+        description="Session-specific storage path"
     )
-    
-    # Multi-pod 라우팅을 위한 Pod 정보
+
+    # Pod information for multi-pod routing
     pod_name: Optional[str] = Field(
-        default=None, 
-        description="세션이 실행 중인 Pod 이름"
+        default=None,
+        description="Pod name where session is running"
     )
     pod_ip: Optional[str] = Field(
-        default=None, 
-        description="세션이 실행 중인 Pod IP"
+        default=None,
+        description="Pod IP where session is running"
     )
 
 
 class ExecuteRequest(BaseModel):
     """
-    Claude 실행 요청
-    
-    세션에서 Claude에게 프롬프트를 전달하고 실행합니다.
-    자율 모드가 활성화되면 Claude가 스스로 판단하여 작업을 완료합니다.
+    Claude execution request.
+
+    Sends a prompt to Claude and executes it in the session.
+    When autonomous mode is enabled, Claude independently completes tasks.
     """
     prompt: str = Field(
-        ..., 
-        description="Claude에게 전달할 프롬프트"
+        ...,
+        description="Prompt to send to Claude"
     )
     timeout: Optional[float] = Field(
         default=600.0,
-        description="실행 타임아웃 (초) - 자율 모드에서는 길게 설정 권장"
+        description="Execution timeout (seconds) - recommend longer timeout for autonomous mode"
     )
     skip_permissions: Optional[bool] = Field(
         default=True,
-        description="권한 프롬프트 건너뛰기 (자율 모드 필수)"
+        description="Skip permission prompts (required for autonomous mode)"
     )
     system_prompt: Optional[str] = Field(
         default=None,
-        description="실행별 추가 시스템 프롬프트"
+        description="Additional system prompt for this execution"
     )
     max_turns: Optional[int] = Field(
         default=None,
-        description="이 실행의 최대 턴 수 (None이면 세션 설정 사용)"
+        description="Maximum turns for this execution (None uses session setting)"
     )
 
 
 class ExecuteResponse(BaseModel):
-    """
-    Claude 실행 응답
-    """
+    """Claude execution response."""
     success: bool
     session_id: str
     output: Optional[str] = None
     error: Optional[str] = None
     cost_usd: Optional[float] = Field(
         default=None,
-        description="API 사용 비용 (USD)"
+        description="API usage cost (USD)"
     )
     duration_ms: Optional[int] = Field(
         default=None,
-        description="실행 시간 (밀리초)"
+        description="Execution time (milliseconds)"
     )
 
 
 class StorageFile(BaseModel):
-    """스토리지 파일 정보"""
+    """Storage file information."""
     name: str
     path: str
     is_dir: bool
@@ -248,14 +246,14 @@ class StorageFile(BaseModel):
 
 
 class StorageListResponse(BaseModel):
-    """스토리지 파일 목록 응답"""
+    """Storage file list response."""
     session_id: str
     storage_path: str
     files: List[StorageFile]
 
 
 class StorageFileContent(BaseModel):
-    """스토리지 파일 내용 응답"""
+    """Storage file content response."""
     session_id: str
     file_path: str
     content: str

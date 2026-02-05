@@ -198,6 +198,20 @@ cython_debug/
 #API keys
 *api_key.txt
 
+# =============================================================================
+# Claude Control Specific
+# =============================================================================
+
+# Claude session storage (local testing)
+claude_sessions/
+
+# MCP configuration files (may contain secrets)
+mcp/*.json
+!mcp/*.json.template
+
+# Local .env file (use .env.example as template)
+.env
+
 # Local configuration files
 trash/
 trash/persistent_config_backup.py
