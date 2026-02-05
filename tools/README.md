@@ -1,16 +1,16 @@
-# Tools 폴더
+# Tools Folder
 
-이 폴더에 **Python 도구 파일**을 추가하면 자동으로 MCP 서버로 변환되어 **모든 Claude Code 세션에서 사용 가능**합니다.
+Add **Python tool files** to this folder to automatically convert them into MCP servers that are **available in all Claude Code sessions**.
 
-## 사용 방법
+## Quick Start
 
-### 1. 도구 파일 생성
+### 1. Create Tool File
 
-`{이름}_tool.py` 또는 `{이름}_tools.py` 형식으로 파일을 생성합니다.
+Create a file with the pattern `{name}_tool.py` or `{name}_tools.py`.
 
-### 2. 도구 정의
+### 2. Define Tools
 
-#### 방법 1: `@tool` 데코레이터 사용 (권장)
+#### Method 1: Using `@tool` Decorator (Recommended)
 
 ```python
 # my_tool.py
@@ -20,24 +20,24 @@ from tools.base import tool
 def search_web(query: str) -> str:
     """
     Search the web for information.
-    
+
     Args:
         query: The search query string
-        
+
     Returns:
         Search results as text
     """
-    # 실제 구현
+    # Actual implementation
     return f"Search results for: {query}"
 
 @tool
 def calculate(expression: str) -> str:
     """
     Calculate a mathematical expression.
-    
+
     Args:
         expression: Math expression to evaluate (e.g., "2 + 3 * 4")
-        
+
     Returns:
         Calculation result
     """
@@ -48,7 +48,7 @@ def calculate(expression: str) -> str:
         return f"Error: {e}"
 ```
 
-#### 방법 2: `BaseTool` 클래스 상속
+#### Method 2: Subclass `BaseTool`
 
 ```python
 # advanced_tool.py
@@ -57,40 +57,40 @@ from tools.base import BaseTool
 class WebSearchTool(BaseTool):
     name = "web_search"
     description = "Search the web for information"
-    
+
     def run(self, query: str) -> str:
-        # 실제 구현
+        # Actual implementation
         return f"Results for: {query}"
 
 class DatabaseQueryTool(BaseTool):
     name = "query_database"
     description = "Execute SQL query on the database"
-    
+
     def run(self, sql: str, database: str = "main") -> str:
-        # 실제 구현
+        # Actual implementation
         return f"Query result from {database}"
 ```
 
-### 3. 도구 내보내기
+### 3. Export Tools
 
-파일 끝에 `TOOLS` 리스트를 정의하여 내보낼 도구를 명시합니다:
+Define a `TOOLS` list at the end of the file to specify which tools to export:
 
 ```python
-# 데코레이터 방식
+# Decorator approach
 TOOLS = [search_web, calculate]
 
-# 또는 클래스 방식
+# Or class approach
 TOOLS = [WebSearchTool(), DatabaseQueryTool()]
 ```
 
-`TOOLS`가 정의되지 않으면 파일 내 모든 `@tool` 함수와 `BaseTool` 인스턴스가 자동 수집됩니다.
+If `TOOLS` is not defined, all `@tool` functions and `BaseTool` instances in the file are automatically collected.
 
-## 전체 예시
+## Complete Example
 
 ```python
 # api_tools.py
 """
-외부 API 연동 도구들
+External API integration tools
 """
 import httpx
 from tools.base import tool
@@ -99,86 +99,130 @@ from tools.base import tool
 def get_weather(city: str) -> str:
     """
     Get current weather for a city.
-    
+
     Args:
         city: City name (e.g., "Seoul", "New York")
-        
+
     Returns:
         Current weather information
     """
-    # 실제로는 API 호출
+    # In practice, call actual API
     return f"Weather in {city}: Sunny, 22°C"
 
 @tool
 def translate_text(text: str, target_lang: str = "en") -> str:
     """
     Translate text to target language.
-    
+
     Args:
         text: Text to translate
         target_lang: Target language code (default: "en")
-        
+
     Returns:
         Translated text
     """
-    # 실제로는 번역 API 호출
+    # In practice, call translation API
     return f"[{target_lang}] {text}"
 
 @tool
 async def fetch_url(url: str) -> str:
     """
     Fetch content from a URL.
-    
+
     Args:
         url: URL to fetch
-        
+
     Returns:
         Response content
     """
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
-        return response.text[:1000]  # 처음 1000자만
+        return response.text[:1000]  # First 1000 chars only
 
-# 내보낼 도구 목록
+# List of tools to export
 TOOLS = [get_weather, translate_text, fetch_url]
 ```
 
-## 자동 로드
+## Auto-Loading
 
-1. `main.py` 실행 시 `tools/` 폴더의 모든 `*_tool.py`, `*_tools.py` 파일 스캔
-2. 각 파일의 도구들을 수집하여 MCP 서버로 래핑
-3. 래핑된 MCP 서버가 **모든 세션에서 기본으로 사용 가능**
+1. When `main.py` runs, scans all `*_tool.py` and `*_tools.py` files in `tools/`
+2. Collects tools from each file and wraps them as MCP servers
+3. Wrapped MCP servers are **available in all sessions by default**
 
-## 파일 구조
+## File Structure
 
 ```
 tools/
-├── README.md           # 이 파일
-├── base.py             # BaseTool 인터페이스, @tool 데코레이터
-├── __init__.py         # 패키지 초기화
-├── example_tool.py     # 예시 도구 (복사해서 사용)
-└── my_custom_tool.py   # 사용자 정의 도구
+├── README.md           # This file
+├── base.py             # BaseTool interface, @tool decorator
+├── __init__.py         # Package initialization
+├── _mcp_server.py      # MCP server wrapper (internal)
+├── example_tool.py     # Example tool (copy and modify)
+└── my_custom_tool.py   # Your custom tools
 ```
 
-## 주의사항
+## Important Notes
 
-1. **파일명**: `*_tool.py` 또는 `*_tools.py` 형식만 자동 로드
-2. **docstring 필수**: 도구의 `description`으로 사용됨
-3. **타입 힌트 권장**: 파라미터 스키마 자동 생성에 활용
-4. **비동기 지원**: `async def` 함수도 지원
-5. **에러 처리**: 예외 발생 시 에러 메시지가 반환됨
+1. **Filename**: Only `*_tool.py` or `*_tools.py` patterns are auto-loaded
+2. **Docstring Required**: Used as the tool's `description`
+3. **Type Hints Recommended**: Used for automatic parameter schema generation
+4. **Async Support**: `async def` functions are fully supported
+5. **Error Handling**: Exceptions are caught and returned as error messages
 
-## 디버깅
+## Debugging
 
-도구가 제대로 로드되었는지 확인:
+Verify that tools are loaded correctly:
 
 ```bash
-# 서버 시작 시 로그 확인
+# Check logs when server starts
 python main.py
 
-# 출력 예시:
+# Example output:
 # [MCP Loader] Loaded tools from: api_tools.py
 # [MCP Loader]   - get_weather
 # [MCP Loader]   - translate_text
 # [MCP Loader]   - fetch_url
+```
+
+## Advanced: Tool Parameters Schema
+
+The `@tool` decorator automatically generates JSON Schema from type hints:
+
+```python
+from typing import Optional, List
+from tools.base import tool
+
+@tool
+def advanced_search(
+    query: str,
+    max_results: int = 10,
+    filters: Optional[List[str]] = None,
+    exact_match: bool = False
+) -> str:
+    """
+    Advanced search with filters.
+
+    Args:
+        query: Search query
+        max_results: Maximum number of results (default: 10)
+        filters: Optional list of filters to apply
+        exact_match: If True, only return exact matches
+
+    Returns:
+        Search results
+    """
+    pass
+```
+
+This generates the schema:
+```json
+{
+  "properties": {
+    "query": {"type": "string"},
+    "max_results": {"type": "integer", "default": 10},
+    "filters": {"type": "array", "items": {"type": "string"}},
+    "exact_match": {"type": "boolean", "default": false}
+  },
+  "required": ["query"]
+}
 ```

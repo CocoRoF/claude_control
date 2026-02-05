@@ -1,7 +1,7 @@
 """
 Claude Manager Package
 
-Claude Code 세션 관리를 위한 핵심 모듈
+Core modules for Claude Code session management
 """
 from service.claude_manager.models import (
     SessionStatus,
@@ -12,7 +12,7 @@ from service.claude_manager.models import (
     StorageFile,
     StorageListResponse,
     StorageFileContent,
-    # MCP 설정 모델
+    # MCP config models
     MCPConfig,
     MCPServerStdio,
     MCPServerHTTP,

@@ -13,23 +13,23 @@ from service.proxy.internal_proxy import get_internal_proxy
 from service.mcp_loader import MCPLoader, get_global_mcp_config
 import uvicorn
 
-# .env 파일 로드
+# Load .env file
 try:
     from dotenv import load_dotenv
-    # 프로젝트 루트의 .env 파일 로드
+    # Load .env file from project root
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
         print(f"✅ Loaded environment from {env_path}")
     else:
-        # .env.example이 있으면 안내 메시지 출력
+        # Show info message if .env.example exists
         example_path = Path(__file__).parent / ".env.example"
         if example_path.exists():
             print(f"ℹ️  No .env file found. Copy .env.example to .env and configure it.")
 except ImportError:
     print("⚠️  python-dotenv not installed. Environment variables must be set manually.")
 
-# 로깅 설정
+# Logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -38,12 +38,12 @@ logger = logging.getLogger(__name__)
 
 
 def print_claude_control_logo():
-    """Claude Control 로고 출력"""
+    """Print Claude Control logo"""
     logo = """
-     ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗     ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  ██████╗ ██╗     
-    ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝    ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔═══██╗██║     
-    ██║     ██║     ███████║██║   ██║██║  ██║█████╗      ██║     ██║   ██║██╔██╗ ██║   ██║   ██████╔╝██║   ██║██║     
-    ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝      ██║     ██║   ██║██║╚██╗██║   ██║   ██╔══██╗██║   ██║██║     
+     ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗     ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  ██████╗ ██╗
+    ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝    ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔═══██╗██║
+    ██║     ██║     ███████║██║   ██║██║  ██║█████╗      ██║     ██║   ██║██╔██╗ ██║   ██║   ██████╔╝██║   ██║██║
+    ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝      ██║     ██║   ██║██║╚██╗██║   ██║   ██╔══██╗██║   ██║██║
     ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗    ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║╚██████╔╝███████╗
      ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
 
@@ -53,7 +53,7 @@ def print_claude_control_logo():
 
 
 def print_step_banner(step: str, title: str, description: str = ""):
-    """단계별 배너 출력"""
+    """Print step banner"""
     banner = f"""
     ┌{'─' * 60}┐
     │  {step}: {title:<52}│
@@ -64,84 +64,84 @@ def print_step_banner(step: str, title: str, description: str = ""):
 
 
 def init_redis_client(app: FastAPI) -> RedisClient:
-    """Redis 클라이언트 초기화 및 app.state에 등록"""
+    """Initialize Redis client and register in app.state"""
     redis_client = RedisClient()
-    
-    # FastAPI app.state에 등록하여 전역 접근 가능하게 함
+
+    # Register in FastAPI app.state for global access
     app.state.redis_client = redis_client
-    
+
     if redis_client.is_connected:
-        logger.info("✅ Redis 클라이언트 초기화 완료")
+        logger.info("✅ Redis client initialization complete")
         stats = redis_client.get_stats()
         logger.info(f"   - Host: {stats['host']}:{stats['port']}")
         logger.info(f"   - DB: {stats['db']}")
         if stats.get('redis_info'):
             logger.info(f"   - Redis Version: {stats['redis_info'].get('version')}")
     else:
-        logger.warning("⚠️  Redis 연결 실패 - 로컬 메모리 모드로 동작")
-    
+        logger.warning("⚠️  Redis connection failed - running in local memory mode")
+
     return redis_client
 
 
 def get_app_redis_client(app: FastAPI) -> RedisClient:
-    """app.state에서 Redis 클라이언트 가져오기"""
+    """Get Redis client from app.state"""
     return getattr(app.state, 'redis_client', None)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """애플리케이션 생명주기 관리"""
+    """Application lifecycle management"""
     print_claude_control_logo()
     print_step_banner("START", "CLAUDE CONTROL STARTUP", "Initializing Claude session management system")
     logger.info("Starting Claude Control")
-    
-    # Pod 정보 초기화
+
+    # Initialize Pod info
     print_step_banner("POD", "POD INFO", "Initializing pod information...")
     pod_info = init_pod_info()
     app.state.pod_info = pod_info
     logger.info(f"   - Pod Name: {pod_info.pod_name}")
     logger.info(f"   - Pod IP: {pod_info.pod_ip}")
     logger.info(f"   - Service Port: {pod_info.service_port}")
-    
-    # Redis 클라이언트 초기화 및 app.state에 등록
+
+    # Initialize Redis client and register in app.state
     print_step_banner("REDIS", "REDIS CONNECTION", "Connecting to Redis server...")
     redis_client = init_redis_client(app)
-    
-    # SessionManager에 Redis 클라이언트 주입
+
+    # Inject Redis client into SessionManager
     session_manager.set_redis_client(redis_client)
-    
-    # MCP 설정 및 도구 자동 로드
+
+    # Auto-load MCP configs and tools
     print_step_banner("MCP", "MCP LOADER", "Loading MCP configs and tools...")
     mcp_loader = MCPLoader()
     mcp_config = mcp_loader.load_all()
     app.state.mcp_loader = mcp_loader
     app.state.global_mcp_config = mcp_config
-    
-    # SessionManager에 글로벌 MCP 설정 주입
+
+    # Inject global MCP config into SessionManager
     session_manager.set_global_mcp_config(mcp_config)
     logger.info(f"   - MCP Servers: {mcp_loader.get_server_count()}")
     logger.info(f"   - Custom Tools: {mcp_loader.get_tool_count()}")
-    
+
     print_step_banner("READY", "CLAUDE CONTROL READY", "All systems operational! 🎉")
     logger.info("🎉 Claude Control startup complete! Ready to serve requests.")
-    
+
     yield
-    
+
     print_step_banner("SHUTDOWN", "CLAUDE CONTROL SHUTDOWN", "Cleaning up sessions...")
     logger.info("Shutting down Claude Control")
-    
-    # Internal Proxy 클라이언트 종료
-    proxy = get_internal_proxy()
-    await proxy.close()
-    
-    # Internal Proxy 클라이언트 종료
+
+    # Shutdown Internal Proxy client
     proxy = get_internal_proxy()
     await proxy.close()
 
-    # 모든 세션 정리 (전체 타임아웃 10초)
+    # Internal Proxy client shutdown
+    proxy = get_internal_proxy()
+    await proxy.close()
+
+    # Cleanup all sessions (10 second total timeout)
     async def cleanup_all_sessions():
         sessions = session_manager.list_sessions()
-        # 병렬로 세션 정리
+        # Cleanup sessions in parallel
         cleanup_tasks = [
             session_manager.delete_session(session.session_id)
             for session in sessions
@@ -156,31 +156,31 @@ async def lifespan(app: FastAPI):
         logger.warning("Session cleanup timed out, some processes may still be running")
 
 
-# FastAPI 앱 생성
+# Create FastAPI app
 app = FastAPI(
     title="Claude Control",
-    description="Claude Code 멀티 세션 관리 시스템",
+    description="Claude Code Multi-Session Management System",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# CORS 설정 (백엔드에서 접근 가능하도록)
+# CORS configuration (allow backend access)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 프로덕션에서는 특정 오리진으로 제한
+    allow_origins=["*"],  # Restrict to specific origins in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 세션 라우팅 미들웨어 (Multi-pod 환경에서 세션 기반 프록시)
-# 주의: add_middleware는 역순으로 실행됨 (마지막에 추가한 것이 먼저 실행)
+# Session routing middleware (Session-based proxy for multi-pod environment)
+# Note: add_middleware executes in reverse order (last added runs first)
 app.add_middleware(SessionRoutingMiddleware)
 
 
 @app.get("/")
 async def root():
-    """헬스체크"""
+    """Health check"""
     pod_info = get_pod_info()
     return {
         "service": "Claude Control",
@@ -193,17 +193,17 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """상세 헬스체크"""
+    """Detailed health check"""
     sessions = session_manager.list_sessions()
     pod_info = get_pod_info()
-    
-    # Redis 상태 확인 (app.state에서 가져오기)
+
+    # Check Redis status (get from app.state)
     redis_client = get_app_redis_client(app)
     redis_status = "disconnected"
     if redis_client and redis_client.is_connected:
         redis_status = "connected" if redis_client.health_check() else "error"
-    
-    # 현재 Pod에서 실행 중인 세션 수
+
+    # Number of sessions running on current pod
     local_sessions = len(session_manager.sessions)
 
     return {
@@ -220,14 +220,14 @@ async def health_check():
 
 @app.get("/redis/stats")
 async def redis_stats():
-    """Redis 상태 및 통계"""
+    """Redis status and statistics"""
     redis_client = get_app_redis_client(app)
     if redis_client:
         return redis_client.get_stats()
     return {"error": "Redis client not initialized"}
 
 
-# Claude 라우터 등록
+# Register Claude router
 app.include_router(claude_router)
 
 if __name__ == "__main__":
@@ -239,10 +239,10 @@ if __name__ == "__main__":
         print(f"Starting server on {host}:{port} (debug={debug})")
 
         if debug:
-            # reload 모드에서는 import string 형식으로 전달
+            # In reload mode, pass as import string format
             uvicorn.run("main:app", host=host, port=port, reload=True)
         else:
-            # 일반 모드에서는 app 객체 직접 전달
+            # In normal mode, pass app object directly
             uvicorn.run(app, host=host, port=port, reload=False)
     except Exception as e:
         logger.warning(f"Failed to load config for uvicorn: {e}")

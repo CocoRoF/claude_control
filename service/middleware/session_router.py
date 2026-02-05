@@ -1,8 +1,8 @@
 """
 Session Routing Middleware
 
-Multi-pod 환경에서 세션 기반 요청 라우팅
-세션이 다른 Pod에 있으면 해당 Pod로 프록시
+Session-based request routing in multi-pod environments
+Proxies to the appropriate Pod if session is on a different Pod
 """
 import re
 import logging
@@ -17,20 +17,20 @@ from service.proxy.internal_proxy import get_internal_proxy, PROXY_HEADER
 
 logger = logging.getLogger(__name__)
 
-# 세션 ID를 추출할 URL 패턴들
+# URL patterns to extract session ID from
 SESSION_URL_PATTERNS = [
     # /api/sessions/{session_id}
     re.compile(r'^/api/sessions/([a-f0-9-]{36})(?:/.*)?$'),
 ]
 
-# 세션 라우팅이 필요한 경로들
+# Routes that require session routing
 SESSION_ROUTES = [
     '/api/sessions/',  # GET, DELETE /api/sessions/{session_id}
 ]
 
-# 세션 라우팅에서 제외할 경로
+# Routes excluded from session routing
 EXCLUDED_ROUTES = [
-    '/api/sessions',  # 목록 조회 (POST로 세션 생성 포함)
+    '/api/sessions',  # List view (including POST for session creation)
     '/health',
     '/redis/stats',
     '/',
@@ -39,22 +39,22 @@ EXCLUDED_ROUTES = [
 
 class SessionRoutingMiddleware(BaseHTTPMiddleware):
     """
-    세션 기반 요청 라우팅 미들웨어
-    
-    세션이 현재 Pod에 없으면 해당 세션이 있는 Pod로 프록시
+    Session-based request routing middleware
+
+    Proxies to the Pod containing the session if not on current Pod
     """
-    
+
     def __init__(self, app: ASGIApp, redis_client: Optional[RedisClient] = None):
         super().__init__(app)
         self._redis: Optional[RedisClient] = redis_client
-        
+
     def set_redis_client(self, redis_client: RedisClient):
-        """Redis 클라이언트 설정 (지연 주입)"""
+        """Set Redis client (lazy injection)"""
         self._redis = redis_client
-    
+
     @property
     def redis(self) -> Optional[RedisClient]:
-        """Redis 클라이언트 반환"""
+        """Return Redis client"""
         if self._redis is None:
             from service.redis.redis_client import get_redis_client
             try:
@@ -62,70 +62,70 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
             except Exception:
                 pass
         return self._redis
-    
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
-        요청 처리
-        
-        1. 프록시된 요청이면 바로 처리
-        2. 세션 라우팅이 필요한 경로인지 확인
-        3. 세션이 다른 Pod에 있으면 프록시
-        4. 현재 Pod에 있으면 로컬 처리
+        Process request
+
+        1. If already proxied, process directly
+        2. Check if route needs session routing
+        3. Proxy if session is on different Pod
+        4. Process locally if on current Pod
         """
         path = request.url.path
         method = request.method
-        
+
         logger.debug(f"🔍 [SessionRouter] Incoming request: {method} {path}")
-        
-        # 이미 프록시된 요청이면 바로 처리
+
+        # If already proxied, process directly
         if request.headers.get(PROXY_HEADER) == "true":
             source_pod = request.headers.get("X-Claude-Control-Source-Pod", "unknown")
             logger.debug(f"📥 Handling proxied request from {source_pod}: {path}")
             return await call_next(request)
-        
-        # 제외할 경로 확인
+
+        # Check excluded routes
         if self._is_excluded_route(path):
             return await call_next(request)
-        
-        # 세션 라우팅이 필요한 경로인지 확인
+
+        # Check if route needs session routing
         if not self._needs_session_routing(path):
             return await call_next(request)
-        
-        # 세션 ID 추출
+
+        # Extract session ID
         session_id = await self._extract_session_id(request)
-        
+
         logger.info(f"🔍 [SessionRouter] Session ID extracted: {session_id}")
-        
+
         if not session_id:
-            # 세션 ID가 없으면 로컬 처리
+            # No session ID, process locally
             logger.debug(f"🔍 [SessionRouter] No session_id, processing locally")
             return await call_next(request)
-        
-        # Redis에서 세션의 Pod 정보 확인
+
+        # Check session's Pod info from Redis
         routing_result = self._get_session_pod_info(session_id)
-        
+
         logger.debug(f"🔍 [SessionRouter] Routing result: {routing_result}")
-        
+
         if routing_result is None:
-            # 세션 정보가 없으면 로컬 처리 (404 반환 예상)
+            # No session info, process locally (expect 404)
             logger.warning(f"Session not found in Redis: {session_id}")
             return await call_next(request)
-        
+
         target_pod_name, target_pod_ip = routing_result
-        
-        # 현재 Pod와 같은지 확인
+
+        # Check if same as current Pod
         pod_info = get_pod_info()
-        
+
         logger.debug(f"🔍 [SessionRouter] Target: {target_pod_name}@{target_pod_ip}, Current: {pod_info.pod_name}@{pod_info.pod_ip}")
-        
+
         if target_pod_name == pod_info.pod_name or target_pod_ip == pod_info.pod_ip:
-            # 현재 Pod에서 처리
+            # Process on current Pod
             logger.info(f"📍 Session {session_id[:8]}... is on this pod, processing locally")
             return await call_next(request)
-        
-        # 다른 Pod로 프록시
+
+        # Proxy to different Pod
         logger.info(f"🔀 Session {session_id[:8]}... is on {target_pod_name} ({target_pod_ip}), proxying...")
-        
+
         proxy = get_internal_proxy()
         return await proxy.proxy_request(
             target_pod_ip=target_pod_ip,
@@ -133,68 +133,68 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
             request=request,
             source_pod_name=pod_info.pod_name
         )
-    
+
     def _is_excluded_route(self, path: str) -> bool:
-        """제외할 경로인지 확인"""
-        # 정확히 일치하는 경우
+        """Check if route should be excluded"""
+        # Exact match
         if path in EXCLUDED_ROUTES:
             return True
-        
-        # 세션 목록 조회 (정확히 /api/sessions)
+
+        # Session list view (exactly /api/sessions)
         if path == '/api/sessions':
             return True
-            
+
         return False
-    
+
     def _needs_session_routing(self, path: str) -> bool:
-        """세션 라우팅이 필요한 경로인지 확인"""
+        """Check if route needs session routing"""
         for route in SESSION_ROUTES:
             if path.startswith(route):
                 return True
         return False
-    
+
     async def _extract_session_id(self, request: Request) -> Optional[str]:
         """
-        요청에서 세션 ID 추출
-        
-        URL 경로에서 세션 ID를 추출
+        Extract session ID from request
+
+        Extracts session ID from URL path
         """
         path = request.url.path
-        
-        # URL 패턴에서 추출
+
+        # Extract from URL pattern
         for pattern in SESSION_URL_PATTERNS:
             match = pattern.match(path)
             if match:
                 return match.group(1)
-        
+
         return None
-    
+
     def _get_session_pod_info(self, session_id: str) -> Optional[tuple]:
         """
-        Redis에서 세션의 Pod 정보 조회
-        
+        Get session's Pod info from Redis
+
         Returns:
-            (pod_name, pod_ip) 또는 None
+            (pod_name, pod_ip) or None
         """
         if not self.redis or not self.redis.is_connected:
             logger.warning("Redis not available for session routing")
             return None
-        
+
         try:
             session_data = self.redis.get_session(session_id)
-            
+
             if not session_data:
                 return None
-            
+
             pod_name = session_data.get('pod_name')
             pod_ip = session_data.get('pod_ip')
-            
+
             if not pod_name or not pod_ip:
                 logger.warning(f"Session {session_id} has no pod info")
                 return None
-            
+
             return (pod_name, pod_ip)
-            
+
         except Exception as e:
             logger.error(f"Failed to get session pod info: {e}")
             return None

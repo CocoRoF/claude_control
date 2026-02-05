@@ -6,7 +6,7 @@ This file is auto-generated. Do not edit manually.
 import sys
 from pathlib import Path
 
-# 프로젝트 루트를 path에 추가
+# Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -16,27 +16,27 @@ except ImportError:
     print("Error: MCP SDK not installed. Run: pip install mcp", file=sys.stderr)
     sys.exit(1)
 
-# 도구 임포트
+# Import tools
 from tools.example_tool import TOOLS as example_tool_TOOLS
 
-# MCP 서버 생성
+# Create MCP server
 mcp = FastMCP("builtin-tools")
 
-# 모든 도구 수집
+# Collect all tools
 all_tools = []
 all_tools.extend(example_tool_TOOLS)
 
-# 각 도구를 MCP에 등록
+# Register each tool to MCP
 for tool_obj in all_tools:
     name = getattr(tool_obj, 'name', None)
     if not name and hasattr(tool_obj, '__name__'):
         name = tool_obj.__name__
     if not name:
         continue
-    
+
     description = getattr(tool_obj, 'description', '') or getattr(tool_obj, '__doc__', '') or f"Tool: {name}"
-    
-    # run 또는 arun 메서드 찾기
+
+    # Find run or arun method
     if hasattr(tool_obj, 'arun'):
         func = tool_obj.arun
     elif hasattr(tool_obj, 'run'):
@@ -45,8 +45,8 @@ for tool_obj in all_tools:
         func = tool_obj
     else:
         continue
-    
-    # MCP 도구로 등록
+
+    # Register as MCP tool
     wrapper = mcp.tool()(func)
     wrapper.__name__ = name
     wrapper.__doc__ = description

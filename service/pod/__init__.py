@@ -1,5 +1,5 @@
 """
-Pod 정보 관리 모듈
+Pod Information Management Module
 """
 from service.pod.pod_info import PodInfo, get_pod_info
 

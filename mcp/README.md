@@ -1,49 +1,49 @@
-# MCP 서버 설정 폴더
+# MCP Server Configuration Folder
 
-이 폴더에 `.json` 파일을 추가하면 **모든 Claude Code 세션에서 자동으로 MCP 서버를 사용**할 수 있습니다.
+Add `.json` files to this folder to **automatically enable MCP servers for all Claude Code sessions**.
 
-## 사용 방법
+## Quick Start
 
-### 1. JSON 파일 생성
+### 1. Create JSON File
 
-이 폴더에 `{이름}.json` 파일을 생성합니다. 파일 이름이 MCP 서버 이름이 됩니다.
+Create a `{name}.json` file in this folder. The filename becomes the MCP server name.
 
-### 2. JSON 스키마
+### 2. JSON Schema
 
 ```json
 {
   "type": "stdio | http | sse",
-  "command": "실행 명령어 (stdio용)",
-  "args": ["인자1", "인자2"],
-  "env": {"환경변수": "값"},
-  "url": "서버 URL (http/sse용)",
-  "headers": {"헤더명": "값"},
-  "description": "서버 설명 (선택사항)"
+  "command": "command to run (for stdio)",
+  "args": ["arg1", "arg2"],
+  "env": {"ENV_VAR": "value"},
+  "url": "server URL (for http/sse)",
+  "headers": {"Header-Name": "value"},
+  "description": "Server description (optional)"
 }
 ```
 
-### 3. 예시
+### 3. Examples
 
-#### GitHub MCP 서버 (`github.json`)
+#### GitHub MCP Server (`github.json`)
 ```json
 {
   "type": "http",
   "url": "https://api.githubcopilot.com/mcp/",
-  "description": "GitHub 연동 - PR, Issue 관리"
+  "description": "GitHub integration - Repository, PR, Issue management"
 }
 ```
 
-#### 파일시스템 MCP 서버 (`filesystem.json`)
+#### Filesystem MCP Server (`filesystem.json`)
 ```json
 {
   "type": "stdio",
   "command": "npx",
   "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace", "/data"],
-  "description": "파일시스템 접근"
+  "description": "Filesystem access"
 }
 ```
 
-#### PostgreSQL MCP 서버 (`database.json`)
+#### PostgreSQL MCP Server (`database.json`)
 ```json
 {
   "type": "stdio",
@@ -52,29 +52,29 @@
   "env": {
     "DATABASE_URL": "postgresql://user:pass@localhost:5432/mydb"
   },
-  "description": "PostgreSQL 데이터베이스 접근"
+  "description": "PostgreSQL database access"
 }
 ```
 
-#### Notion MCP 서버 (`notion.json`)
+#### Notion MCP Server (`notion.json`)
 ```json
 {
   "type": "http",
   "url": "https://mcp.notion.com/mcp",
-  "description": "Notion 페이지 및 데이터베이스 접근"
+  "description": "Notion pages and databases access"
 }
 ```
 
-#### Sentry MCP 서버 (`sentry.json`)
+#### Sentry MCP Server (`sentry.json`)
 ```json
 {
   "type": "http",
   "url": "https://mcp.sentry.dev/mcp",
-  "description": "Sentry 에러 모니터링"
+  "description": "Sentry error monitoring"
 }
 ```
 
-#### 커스텀 Python MCP 서버 (`custom.json`)
+#### Custom Python MCP Server (`custom.json`)
 ```json
 {
   "type": "stdio",
@@ -83,13 +83,13 @@
   "env": {
     "API_KEY": "${MY_API_KEY}"
   },
-  "description": "커스텀 도구 서버"
+  "description": "Custom tool server"
 }
 ```
 
-## 환경 변수 사용
+## Environment Variables
 
-JSON 파일 내에서 `${환경변수명}` 형식으로 환경 변수를 참조할 수 있습니다:
+Use `${VARIABLE_NAME}` syntax to reference environment variables in JSON files:
 
 ```json
 {
@@ -101,27 +101,81 @@ JSON 파일 내에서 `${환경변수명}` 형식으로 환경 변수를 참조�
 }
 ```
 
-## 자동 로드
+## Auto-Loading
 
-- `main.py` 실행 시 이 폴더의 모든 `.json` 파일이 자동으로 로드됩니다
-- 로드된 MCP 서버는 **모든 세션에서 기본으로 사용 가능**합니다
-- 세션 생성 시 추가 MCP 설정을 전달하면 **병합**됩니다
+- All `.json` files in this folder are automatically loaded when `main.py` starts
+- Loaded MCP servers are **available in all sessions by default**
+- Additional MCP config passed during session creation will be **merged**
 
-## 주의사항
+## Important Notes
 
-1. **파일명 = 서버 이름**: `github.json` → MCP 서버 이름 `github`
-2. **중복 방지**: 같은 이름의 서버가 세션 설정에 있으면 세션 설정이 우선
-3. **검증**: 잘못된 JSON은 로드 시 경고 출력 후 건너뜀
-4. **보안**: API 키는 환경 변수로 관리 권장
+1. **Filename = Server Name**: `github.json` → MCP server name `github`
+2. **Override Prevention**: Session-specific config takes priority if same server name exists
+3. **Validation**: Invalid JSON files will log a warning and be skipped
+4. **Security**: Store API keys in environment variables, not in JSON files
 
-## 인기 MCP 서버 목록
+## Popular MCP Servers
 
-| 서버 | URL | 설명 |
-|------|-----|------|
-| GitHub | `https://api.githubcopilot.com/mcp/` | GitHub 연동 |
-| Notion | `https://mcp.notion.com/mcp` | Notion 연동 |
-| Sentry | `https://mcp.sentry.dev/mcp` | 에러 모니터링 |
-| Slack | `https://mcp.slack.com/mcp` | Slack 연동 |
-| Linear | `https://mcp.linear.app/mcp` | 이슈 트래커 |
+| Server | URL | Description |
+|--------|-----|-------------|
+| GitHub | `https://api.githubcopilot.com/mcp/` | GitHub integration |
+| Notion | `https://mcp.notion.com/mcp` | Notion integration |
+| Sentry | `https://mcp.sentry.dev/mcp` | Error monitoring |
+| Slack | `https://mcp.slack.com/mcp` | Slack integration |
+| Linear | `https://mcp.linear.app/mcp` | Issue tracker |
 
-더 많은 MCP 서버: https://github.com/modelcontextprotocol/servers
+More MCP servers: https://github.com/modelcontextprotocol/servers
+
+---
+
+## GitHub Automation Setup
+
+To enable Claude to automatically clone repos, create branches, and submit PRs:
+
+### Step 1: Create GitHub MCP Config
+
+Copy the template and create your config:
+
+```bash
+cp example_github.json.template github.json
+```
+
+### Step 2: Configure Git Credentials
+
+Claude Code uses system git configuration. Ensure git is configured:
+
+```bash
+# Configure git user
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
+# For HTTPS authentication, use GitHub CLI or credential manager
+gh auth login
+
+# Or set up SSH keys for git operations
+ssh-keygen -t ed25519 -C "your.email@example.com"
+```
+
+### Step 3: Enable Autonomous Mode
+
+In `.env`, ensure:
+```
+CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true
+```
+
+### Step 4: Test GitHub Integration
+
+```bash
+curl -X POST http://localhost:8000/api/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_name": "github-test"
+  }'
+
+curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Clone https://github.com/user/repo, create a new branch called feature/test, add a README.md, commit and push, then create a PR.",
+    "timeout": 600
+  }'
+```

@@ -1,21 +1,21 @@
 # Claude Control
 
-Claude Code 멀티 세션 관리 시스템
+Multi-session management system for Claude Code
 
-## 개요
+## Overview
 
-Claude Control은 여러 Claude Code 세션을 동시에 관리하고 제어할 수 있는 시스템입니다.
+Claude Control enables simultaneous management and control of multiple Claude Code sessions.
 
-### 주요 기능
+### Key Features
 
-- **멀티 세션 관리**: 여러 Claude Code 인스턴스를 세션 단위로 생성/관리
-- **세션별 독립 스토리지**: 각 세션마다 독립적인 작업 디렉토리 제공
-- **Multi-pod 지원**: Kubernetes 환경에서 여러 Pod에 걸친 세션 관리
-- **Redis 기반 세션 공유**: Redis를 통한 세션 메타데이터 공유
-- **🔌 MCP 자동 로드**: `mcp/` 폴더의 JSON 설정 자동 로드
-- **🔧 커스텀 도구**: `tools/` 폴더의 Python 도구 자동 등록
+- **Multi-session Management**: Create and manage multiple Claude Code instances per session
+- **Independent Storage per Session**: Each session has its own isolated working directory
+- **Multi-pod Support**: Session management across multiple Kubernetes Pods
+- **Redis-based Session Sharing**: Share session metadata via Redis
+- **🔌 MCP Auto-loading**: Automatically load JSON configs from `mcp/` folder
+- **🔧 Custom Tools**: Auto-register Python tools from `tools/` folder
 
-## 아키텍처
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -23,71 +23,75 @@ Claude Control은 여러 Claude Code 세션을 동시에 관리하고 제어할 
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │   [API Layer]                                                    │
-│   ├── POST /api/sessions          - 세션 생성                   │
-│   ├── GET  /api/sessions          - 세션 목록                   │
-│   ├── GET  /api/sessions/{id}     - 세션 조회                   │
-│   ├── DELETE /api/sessions/{id}   - 세션 삭제                   │
-│   ├── POST /api/sessions/{id}/execute - Claude 실행             │
-│   └── GET  /api/sessions/{id}/storage - 스토리지 조회           │
+│   ├── POST /api/sessions          - Create session              │
+│   ├── GET  /api/sessions          - List sessions               │
+│   ├── GET  /api/sessions/{id}     - Get session                 │
+│   ├── DELETE /api/sessions/{id}   - Delete session              │
+│   ├── POST /api/sessions/{id}/execute - Execute Claude          │
+│   └── GET  /api/sessions/{id}/storage - Get storage info        │
 │                                                                  │
 │   [Session Manager]                                              │
-│   ├── 세션 생명주기 관리                                         │
-│   ├── Redis 기반 메타데이터 저장                                 │
-│   └── Multi-pod 세션 라우팅                                      │
+│   ├── Session lifecycle management                               │
+│   ├── Redis-based metadata storage                               │
+│   └── Multi-pod session routing                                  │
 │                                                                  │
 │   [Claude Process]                                               │
-│   ├── claude CLI 프로세스 관리                                   │
-│   ├── 독립 스토리지 디렉토리                                     │
-│   └── 프롬프트 실행 및 응답 수집                                 │
+│   ├── Claude CLI process management                              │
+│   ├── Independent storage directory                              │
+│   └── Prompt execution and response collection                   │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 설치
+## Installation
 
-### 필수 요구사항
+### Prerequisites
 
 - Python 3.11+
 - Claude CLI (`npm install -g @anthropic-ai/claude-code`)
-- Redis (선택사항, Multi-pod 환경에서 필요)
+- Redis (optional, required for multi-pod environments)
 
-### 설치 방법
+### Install
 
 ```bash
-# 의존성 설치
+# Install dependencies
 pip install -r requirements.txt
 
-# 또는 pyproject.toml 사용
+# Or using pyproject.toml
 pip install -e .
 ```
 
-## 환경 변수
+## Environment Variables
 
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `APP_HOST` | 서버 호스트 | `0.0.0.0` |
-| `APP_PORT` | 서버 포트 | `8000` |
-| `DEBUG_MODE` | 디버그 모드 | `false` |
-| `REDIS_HOST` | Redis 호스트 | `redis` |
-| `REDIS_PORT` | Redis 포트 | `6379` |
-| `REDIS_PASSWORD` | Redis 비밀번호 | - |
-| `CLAUDE_STORAGE_ROOT` | 세션 스토리지 루트 경로 | `/tmp/claude_sessions` |
-| `ANTHROPIC_API_KEY` | Anthropic API 키 (필수) | - |
-| `CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS` | 자율 모드 - 권한 프롬프트 건너뛰기 | `true` |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `APP_HOST` | Server host | `0.0.0.0` |
+| `APP_PORT` | Server port | `8000` |
+| `DEBUG_MODE` | Debug mode | `false` |
+| `REDIS_HOST` | Redis host | `redis` |
+| `REDIS_PORT` | Redis port | `6379` |
+| `REDIS_PASSWORD` | Redis password | - |
+| `CLAUDE_STORAGE_ROOT` | Session storage root path | OS-dependent* |
+| `ANTHROPIC_API_KEY` | Anthropic API key (required) | - |
+| `CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS` | Autonomous mode - skip permission prompts | `true` |
 
-## 실행
+*Default storage paths:
+- Windows: `%LOCALAPPDATA%\claude_sessions`
+- macOS/Linux: `/tmp/claude_sessions`
+
+## Running
 
 ```bash
-# 개발 모드 (hot reload)
+# Development mode (hot reload)
 DEBUG_MODE=true python main.py
 
-# 프로덕션 모드
+# Production mode
 python main.py
 ```
 
-## API 사용 예시
+## API Usage Examples
 
-### 세션 생성
+### Create Session
 
 ```bash
 curl -X POST http://localhost:8000/api/sessions \
@@ -98,7 +102,7 @@ curl -X POST http://localhost:8000/api/sessions \
   }'
 ```
 
-### Claude 실행 (기본)
+### Execute Claude (Basic)
 
 ```bash
 curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
@@ -108,14 +112,14 @@ curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
   }'
 ```
 
-### 🤖 자율 모드 실행 예시
+### 🤖 Autonomous Mode Examples
 
-자율 모드를 사용하면 Claude가 질문 없이 스스로 작업을 완료합니다.
+Autonomous mode allows Claude to complete tasks independently without asking questions.
 
-#### Next.js 프로젝트 생성 및 Git Push
+#### Create Next.js Project and Push to Git
 
 ```bash
-# 세션 생성 (자율 모드가 기본 활성화)
+# Create session (autonomous mode enabled by default)
 curl -X POST http://localhost:8000/api/sessions \
   -H "Content-Type: application/json" \
   -d '{
@@ -124,7 +128,7 @@ curl -X POST http://localhost:8000/api/sessions \
     "autonomous": true
   }'
 
-# 자율적으로 Next.js 프로젝트 생성 및 Git Push 수행
+# Autonomously create Next.js project and push to Git
 curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
   -H "Content-Type: application/json" \
   -d '{
@@ -135,7 +139,7 @@ curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
   }'
 ```
 
-#### 자동 코드 리팩토링
+#### Automatic Code Refactoring
 
 ```bash
 curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
@@ -147,7 +151,7 @@ curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
   }'
 ```
 
-#### 테스트 작성 자동화
+#### Automated Test Writing
 
 ```bash
 curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
@@ -158,79 +162,141 @@ curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
   }'
 ```
 
-### 세션 삭제
+### Delete Session
 
 ```bash
 curl -X DELETE http://localhost:8000/api/sessions/{session_id}
 ```
 
-## 프로젝트 구조
+## 🔄 GitHub Automation
+
+Claude Control can automate GitHub workflows - clone repos, create branches, make changes, and submit PRs.
+
+### Prerequisites
+
+1. **Git Configuration**:
+   ```bash
+   git config --global user.name "Your Name"
+   git config --global user.email "your.email@example.com"
+   ```
+
+2. **GitHub Authentication** (choose one):
+   ```bash
+   # Option 1: GitHub CLI (recommended)
+   gh auth login
+
+   # Option 2: SSH keys
+   ssh-keygen -t ed25519 -C "your.email@example.com"
+   # Add public key to GitHub Settings > SSH Keys
+
+   # Option 3: HTTPS with credential manager
+   git config --global credential.helper manager
+   ```
+
+3. **Enable Autonomous Mode** in `.env`:
+   ```
+   CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true
+   ```
+
+### Example: Clone, Enhance, and Create PR
+
+```bash
+# Create session
+curl -X POST http://localhost:8000/api/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_name": "github-automation",
+    "max_turns": 100
+  }'
+
+# Execute GitHub workflow
+curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "1. Clone https://github.com/user/my-repo.git, 2. Create a new branch called feature/improvements, 3. Add comprehensive documentation to all functions, 4. Add unit tests for existing code, 5. Commit all changes with descriptive messages, 6. Push the branch, 7. Create a pull request with a detailed description of all changes.",
+    "timeout": 1800,
+    "system_prompt": "You are an autonomous coding agent. Complete all tasks without asking questions. Use git commands directly. Make reasonable decisions about code improvements."
+  }'
+```
+
+### Example: Automated Code Review and Fix
+
+```bash
+curl -X POST http://localhost:8000/api/sessions/{session_id}/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Clone https://github.com/user/project.git, review all code for bugs and security issues, fix any problems found, create a branch called fix/security-audit, commit all fixes, push, and create a PR titled Security Audit Fixes.",
+    "timeout": 1200
+  }'
+```
+
+## Project Structure
 
 ```
 claude_control/
-├── main.py                         # FastAPI 앱 진입점
+├── main.py                         # FastAPI app entrypoint
 ├── controller/
-│   └── claude_controller.py        # API 엔드포인트
+│   └── claude_controller.py        # API endpoints
 ├── service/
-│   ├── claude_manager/             # 핵심 세션 관리
-│   │   ├── models.py               # 데이터 모델
-│   │   ├── process_manager.py      # Claude 프로세스 관리
-│   │   ├── session_manager.py      # 세션 생명주기
-│   │   └── mcp_tools_server.py     # LangChain → MCP 래퍼
+│   ├── claude_manager/             # Core session management
+│   │   ├── models.py               # Data models
+│   │   ├── process_manager.py      # Claude process management
+│   │   ├── session_manager.py      # Session lifecycle
+│   │   └── mcp_tools_server.py     # LangChain → MCP wrapper
 │   ├── redis/
-│   │   └── redis_client.py         # Redis 클라이언트
+│   │   └── redis_client.py         # Redis client
 │   ├── pod/
-│   │   └── pod_info.py             # Pod 정보 (Multi-pod)
+│   │   └── pod_info.py             # Pod info (multi-pod)
 │   ├── middleware/
-│   │   └── session_router.py       # 세션 라우팅 미들웨어
+│   │   └── session_router.py       # Session routing middleware
 │   ├── proxy/
-│   │   └── internal_proxy.py       # Pod 간 프록시
+│   │   └── internal_proxy.py       # Inter-pod proxy
 │   ├── utils/
-│   │   └── utils.py                # 유틸리티
-│   └── mcp_loader.py               # MCP/도구 자동 로더
-├── mcp/                            # 📁 MCP 서버 설정 (자동 로드)
-│   ├── README.md                   # 사용 가이드
-│   └── *.json                      # MCP 서버 설정 파일
-├── tools/                          # 📁 커스텀 도구 (자동 로드)
-│   ├── README.md                   # 사용 가이드
-│   ├── base.py                     # BaseTool, @tool 데코레이터
-│   └── *_tool.py                   # 커스텀 도구 파일
+│   │   └── utils.py                # Utilities
+│   └── mcp_loader.py               # MCP/tools auto-loader
+├── mcp/                            # 📁 MCP server configs (auto-load)
+│   ├── README.md                   # Usage guide
+│   └── *.json                      # MCP server config files
+├── tools/                          # 📁 Custom tools (auto-load)
+│   ├── README.md                   # Usage guide
+│   ├── base.py                     # BaseTool, @tool decorator
+│   └── *_tool.py                   # Custom tool files
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
 
-## 📁 MCP/Tools 자동 로드
+## 📁 MCP/Tools Auto-Loading
 
-### mcp/ 폴더 (MCP 서버 자동 등록)
+### mcp/ Folder (MCP Server Auto-Registration)
 
-`mcp/` 폴더에 `.json` 파일을 추가하면 **모든 세션에서 자동으로 사용 가능**합니다.
+Add `.json` files to `mcp/` folder to make them **automatically available in all sessions**.
 
 ```bash
-# 예: mcp/github.json
+# Example: mcp/github.json
 {
   "type": "http",
   "url": "https://api.githubcopilot.com/mcp/",
-  "description": "GitHub MCP 서버"
+  "description": "GitHub MCP server"
 }
 
-# 예: mcp/database.json
+# Example: mcp/database.json
 {
   "type": "stdio",
   "command": "npx",
   "args": ["-y", "@bytebase/dbhub", "--dsn", "${DATABASE_URL}"],
-  "description": "PostgreSQL MCP 서버"
+  "description": "PostgreSQL MCP server"
 }
 ```
 
-👉 자세한 내용: [mcp/README.md](mcp/README.md)
+👉 Details: [mcp/README.md](mcp/README.md)
 
-### tools/ 폴더 (커스텀 도구 자동 등록)
+### tools/ Folder (Custom Tool Auto-Registration)
 
-`tools/` 폴더에 `*_tool.py` 파일을 추가하면 **모든 세션에서 자동으로 사용 가능**합니다.
+Add `*_tool.py` files to `tools/` folder to make them **automatically available in all sessions**.
 
 ```python
-# 예: tools/my_tool.py
+# Example: tools/my_tool.py
 from tools.base import tool
 
 @tool
@@ -241,16 +307,16 @@ def search_database(query: str) -> str:
 TOOLS = [search_database]
 ```
 
-👉 자세한 내용: [tools/README.md](tools/README.md)
+👉 Details: [tools/README.md](tools/README.md)
 
-## 🔌 MCP 서버 설정 (API)
+## 🔌 MCP Server Configuration (API)
 
-Claude Code 세션에 MCP 서버를 연결하여 외부 도구와 데이터에 접근할 수 있습니다.
+Connect MCP servers to Claude Code sessions to access external tools and data.
 
-### MCP 서버 설정 예시
+### MCP Server Config Example
 
 ```bash
-# GitHub, 파일시스템, PostgreSQL MCP 서버 연결
+# Connect GitHub, filesystem, and PostgreSQL MCP servers
 curl -X POST http://localhost:8000/api/sessions \
   -H "Content-Type: application/json" \
   -d '{
@@ -276,15 +342,15 @@ curl -X POST http://localhost:8000/api/sessions \
   }'
 ```
 
-### 지원 MCP 트랜스포트
+### Supported MCP Transports
 
-| 타입 | 설명 | 사용 예 |
-|------|------|---------|
-| `stdio` | 로컬 프로세스 | npx, python 스크립트 |
-| `http` | 원격 HTTP 서버 | GitHub, Notion, Sentry |
-| `sse` | Server-Sent Events (deprecated) | 레거시 서버 |
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `stdio` | Local process | npx, python scripts |
+| `http` | Remote HTTP server | GitHub, Notion, Sentry |
+| `sse` | Server-Sent Events (deprecated) | Legacy servers |
 
-### 인기 MCP 서버
+### Popular MCP Servers
 
 ```json
 {
@@ -297,17 +363,17 @@ curl -X POST http://localhost:8000/api/sessions \
 }
 ```
 
-## 🔧 LangChain 도구 통합
+## 🔧 LangChain Tool Integration
 
-LangChain 도구를 MCP 서버로 래핑하여 Claude Code 세션에서 사용할 수 있습니다.
+LangChain tools can be wrapped as MCP servers for use in Claude Code sessions.
 
-### LangChain 도구를 MCP 서버로 변환
+### Convert LangChain Tools to MCP Server
 
 ```python
 from langchain_core.tools import tool
 from service.claude_manager.mcp_tools_server import MCPToolsServer
 
-# LangChain 도구 정의
+# Define LangChain tools
 @tool
 def search_web(query: str) -> str:
     """Search the web for information"""
@@ -318,23 +384,23 @@ def analyze_code(code: str, language: str = "python") -> str:
     """Analyze code for potential issues"""
     return f"Analysis of {language} code: No issues found"
 
-# MCP 서버 생성 및 실행
+# Create and run MCP server
 server = MCPToolsServer(
     name="custom-tools",
     tools=[search_web, analyze_code]
 )
 
-# stdio 트랜스포트로 실행
+# Run with stdio transport
 server.run(transport="stdio")
 
-# 또는 HTTP 서버로 실행
+# Or run as HTTP server
 # server.run(transport="http", port=8080)
 ```
 
-### LangChain MCP 서버를 세션에 연결
+### Connect LangChain MCP Server to Session
 
 ```bash
-# LangChain 도구 MCP 서버를 세션에 연결
+# Connect LangChain tool MCP server to session
 curl -X POST http://localhost:8000/api/sessions \
   -H "Content-Type: application/json" \
   -d '{
@@ -351,7 +417,7 @@ curl -X POST http://localhost:8000/api/sessions \
   }'
 ```
 
-### 편의 함수로 MCP 설정 생성
+### Convenience Functions for MCP Config
 
 ```python
 from service.claude_manager.mcp_tools_server import (
@@ -361,16 +427,16 @@ from service.claude_manager.mcp_tools_server import (
     create_custom_mcp_config
 )
 
-# 파일시스템 접근
+# Filesystem access
 fs_config = create_filesystem_mcp_config(["/workspace", "/data"])
 
-# GitHub 연결
+# GitHub connection
 github_config = create_github_mcp_config()
 
-# PostgreSQL 연결
+# PostgreSQL connection
 db_config = create_postgres_mcp_config("postgresql://user:pass@localhost:5432/mydb")
 
-# 커스텀 서버
+# Custom server
 custom_config = create_custom_mcp_config(
     server_type="stdio",
     command="python",
@@ -379,7 +445,13 @@ custom_config = create_custom_mcp_config(
 )
 ```
 
-## 라이선스
+## Cross-Platform Support
+
+Claude Control works on Windows, macOS, and Linux:
+
+- **Windows**: Uses `%LOCALAPPDATA%\claude_sessions` for storage, auto-detects `.cmd`/`.exe` executables
+- **macOS/Linux**: Uses `/tmp/claude_sessions` for storage, uses standard executable paths
+
+## License
 
 MIT License
-

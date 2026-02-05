@@ -1,7 +1,7 @@
 [project]
 name = "claude-control"
 version = "1.0.0"
-description = "Claude Control - Claude Code 멀티 세션 관리 시스템"
+description = "Claude Control - Claude Code Multi-Session Management System"
 readme = "README.md"
 requires-python = ">=3.11"
 

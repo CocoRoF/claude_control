@@ -1,5 +1,5 @@
 """
-Middleware 모듈
+Middleware Module
 """
 from service.middleware.session_router import SessionRoutingMiddleware
 

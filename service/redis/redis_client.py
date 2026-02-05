@@ -1,8 +1,8 @@
 """
 Redis Client for Claude Control
 
-Claude 세션을 Redis에서 관리하기 위한 클라이언트
-Multi-pod 환경에서 Redis가 true source 역할을 함
+Client for managing Claude sessions in Redis
+In multi-pod environments, Redis acts as the source of truth
 """
 import os
 import json
@@ -12,25 +12,25 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Redis 연결이 가능한지 확인
+# Check if Redis connection is available
 import redis
 REDIS_AVAILABLE = True
 
 class RedisClient:
     """
-    Claude 세션 관리용 Redis 클라이언트
-    
-    싱글톤 패턴으로 구현되어 애플리케이션 전체에서 하나의 인스턴스만 사용
+    Redis client for Claude session management
+
+    Implemented as singleton pattern - only one instance used across the application
     """
-    
+
     _instance: Optional['RedisClient'] = None
     _initialized: bool = False
-    
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     def __init__(
         self,
         host: Optional[str] = None,
@@ -39,40 +39,40 @@ class RedisClient:
         password: Optional[str] = None,
         key_prefix: str = "claude-control"
     ):
-        # 이미 초기화된 경우 스킵 (싱글톤)
+        # Skip if already initialized (singleton)
         if RedisClient._initialized:
             return
-            
+
         if not REDIS_AVAILABLE:
-            logger.error("Redis 패키지가 없어 초기화할 수 없습니다")
+            logger.error("Cannot initialize - Redis package not installed")
             self._connection_available = False
             RedisClient._initialized = True
             return
-        
-        # 환경 변수에서 Redis 연결 정보 읽기
+
+        # Read Redis connection info from environment variables
         self._host = host or os.getenv('REDIS_HOST', 'redis')
         self._port = port or int(os.getenv('REDIS_PORT', '6379'))
         self._db = db or int(os.getenv('REDIS_DB', '0'))
         self._password = password or os.getenv('REDIS_PASSWORD')
-        
-        # 연결 타임아웃 설정
+
+        # Connection timeout settings
         self._socket_timeout = float(os.getenv('REDIS_SOCKET_TIMEOUT', '5'))
         self._socket_connect_timeout = float(os.getenv('REDIS_CONNECT_TIMEOUT', '3'))
-        
-        # 키 프리픽스 (multi-tenant 지원)
+
+        # Key prefix (multi-tenant support)
         self._key_prefix = key_prefix
-        
-        # 연결 상태
+
+        # Connection state
         self._connection_available = False
         self._redis_client: Optional['redis.Redis'] = None
-        
-        # Redis 연결 시도
+
+        # Attempt Redis connection
         self._connect()
-        
+
         RedisClient._initialized = True
-    
+
     def _connect(self) -> bool:
-        """Redis 서버에 연결"""
+        """Connect to Redis server"""
         try:
             self._redis_client = redis.Redis(
                 host=self._host,
@@ -83,263 +83,263 @@ class RedisClient:
                 socket_timeout=self._socket_timeout,
                 socket_connect_timeout=self._socket_connect_timeout
             )
-            
-            # 연결 테스트
+
+            # Test connection
             self._redis_client.ping()
             self._connection_available = True
-            logger.info(f"✅ Redis 연결 성공: {self._host}:{self._port}")
+            logger.info(f"✅ Redis connected: {self._host}:{self._port}")
             return True
-            
+
         except redis.exceptions.ConnectionError as e:
-            logger.warning(f"⚠️  Redis 연결 실패: {self._host}:{self._port}")
-            logger.warning(f"   원인: {e}")
-            logger.warning(f"   💡 Redis 서버가 실행 중인지 확인하세요")
+            logger.warning(f"⚠️  Redis connection failed: {self._host}:{self._port}")
+            logger.warning(f"   Reason: {e}")
+            logger.warning(f"   💡 Check if Redis server is running")
             self._connection_available = False
             return False
-            
+
         except redis.exceptions.TimeoutError as e:
-            logger.warning(f"⚠️  Redis 연결 타임아웃: {self._host}:{self._port}")
-            logger.warning(f"   💡 네트워크 연결을 확인하세요")
+            logger.warning(f"⚠️  Redis connection timeout: {self._host}:{self._port}")
+            logger.warning(f"   💡 Check network connection")
             self._connection_available = False
             return False
-            
+
         except Exception as e:
-            logger.warning(f"⚠️  Redis 초기화 오류: {e}")
+            logger.warning(f"⚠️  Redis initialization error: {e}")
             self._connection_available = False
             return False
-    
+
     @classmethod
     def get_instance(cls) -> 'RedisClient':
-        """싱글톤 인스턴스 반환"""
+        """Return singleton instance"""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
-    
+
     @classmethod
     def reset_instance(cls):
-        """인스턴스 초기화 (테스트용)"""
+        """Reset instance (for testing)"""
         cls._instance = None
         cls._initialized = False
-    
-    # ========== 연결 관리 ==========
-    
+
+    # ========== Connection Management ==========
+
     @property
     def is_connected(self) -> bool:
-        """Redis 연결 상태 확인"""
+        """Check Redis connection status"""
         return self._connection_available
-    
+
     def health_check(self) -> bool:
-        """Redis 연결 상태 체크"""
+        """Check Redis connection health"""
         if not self._connection_available or not self._redis_client:
             return False
         try:
             return self._redis_client.ping()
         except Exception as e:
-            logger.error(f"Redis health check 실패: {e}")
+            logger.error(f"Redis health check failed: {e}")
             self._connection_available = False
             return False
-    
+
     def reconnect(self) -> bool:
-        """Redis 재연결 시도"""
-        logger.info("Redis 재연결 시도...")
+        """Attempt Redis reconnection"""
+        logger.info("Attempting Redis reconnection...")
         return self._connect()
-    
-    # ========== 키 관리 ==========
-    
+
+    # ========== Key Management ==========
+
     def _make_key(self, *parts: str) -> str:
-        """키 생성 (prefix 포함)"""
+        """Generate key (with prefix)"""
         return f"{self._key_prefix}:{':'.join(parts)}"
-    
-    # ========== 세션 관리 ==========
-    
+
+    # ========== Session Management ==========
+
     def save_session(self, session_id: str, session_data: Dict[str, Any], ttl: Optional[int] = None) -> bool:
         """
-        세션 정보 저장
-        
+        Save session information
+
         Args:
-            session_id: 세션 ID
-            session_data: 세션 데이터 (dict)
-            ttl: TTL (초), None이면 영구 저장
-            
+            session_id: Session ID
+            session_data: Session data (dict)
+            ttl: TTL (seconds), None for permanent storage
+
         Returns:
-            성공 여부
+            Success status
         """
         if not self._connection_available:
-            logger.warning("Redis 연결 불가 - 세션 저장 스킵")
+            logger.warning("Redis not connected - skipping session save")
             return False
-            
+
         try:
             key = self._make_key("session", session_id)
-            
-            # datetime 객체를 ISO format 문자열로 변환
+
+            # Convert datetime objects to ISO format strings
             data_to_save = self._serialize_session_data(session_data)
-            
+
             if ttl:
                 self._redis_client.setex(key, ttl, json.dumps(data_to_save))
             else:
                 self._redis_client.set(key, json.dumps(data_to_save))
-            
-            # 세션 목록에도 추가
+
+            # Also add to session list
             sessions_set_key = self._make_key("sessions")
             self._redis_client.sadd(sessions_set_key, session_id)
-            
-            logger.debug(f"세션 저장 완료: {session_id}")
+
+            logger.debug(f"Session saved: {session_id}")
             return True
-            
+
         except Exception as e:
-            logger.error(f"세션 저장 실패: {session_id} - {e}")
+            logger.error(f"Session save failed: {session_id} - {e}")
             return False
-    
+
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
-        세션 정보 조회
-        
+        Retrieve session information
+
         Args:
-            session_id: 세션 ID
-            
+            session_id: Session ID
+
         Returns:
-            세션 데이터 또는 None
+            Session data or None
         """
         if not self._connection_available:
             return None
-            
+
         try:
             key = self._make_key("session", session_id)
             data = self._redis_client.get(key)
-            
+
             if data:
                 session_data = json.loads(data)
                 return self._deserialize_session_data(session_data)
             return None
-            
+
         except Exception as e:
-            logger.error(f"세션 조회 실패: {session_id} - {e}")
+            logger.error(f"Session retrieval failed: {session_id} - {e}")
             return None
-    
+
     def delete_session(self, session_id: str) -> bool:
         """
-        세션 삭제
-        
+        Delete session
+
         Args:
-            session_id: 세션 ID
-            
+            session_id: Session ID
+
         Returns:
-            성공 여부
+            Success status
         """
         if not self._connection_available:
             return False
-            
+
         try:
             key = self._make_key("session", session_id)
             self._redis_client.delete(key)
-            
-            # 세션 목록에서도 제거
+
+            # Also remove from session list
             sessions_set_key = self._make_key("sessions")
             self._redis_client.srem(sessions_set_key, session_id)
-            
-            logger.debug(f"세션 삭제 완료: {session_id}")
+
+            logger.debug(f"Session deleted: {session_id}")
             return True
-            
+
         except Exception as e:
-            logger.error(f"세션 삭제 실패: {session_id} - {e}")
+            logger.error(f"Session deletion failed: {session_id} - {e}")
             return False
-    
+
     def list_sessions(self) -> List[str]:
         """
-        모든 세션 ID 목록 조회
-        
+        Retrieve all session ID list
+
         Returns:
-            세션 ID 리스트
+            List of session IDs
         """
         if not self._connection_available:
             return []
-            
+
         try:
             sessions_set_key = self._make_key("sessions")
             return list(self._redis_client.smembers(sessions_set_key))
-            
+
         except Exception as e:
-            logger.error(f"세션 목록 조회 실패: {e}")
+            logger.error(f"Session list retrieval failed: {e}")
             return []
-    
+
     def get_all_sessions(self) -> List[Dict[str, Any]]:
         """
-        모든 세션 데이터 조회
-        
+        Retrieve all session data
+
         Returns:
-            세션 데이터 리스트
+            List of session data
         """
         if not self._connection_available:
             return []
-            
+
         try:
             session_ids = self.list_sessions()
             sessions = []
-            
+
             for session_id in session_ids:
                 session_data = self.get_session(session_id)
                 if session_data:
                     sessions.append(session_data)
-                    
+
             return sessions
-            
+
         except Exception as e:
-            logger.error(f"전체 세션 조회 실패: {e}")
+            logger.error(f"All sessions retrieval failed: {e}")
             return []
-    
+
     def session_exists(self, session_id: str) -> bool:
         """
-        세션 존재 여부 확인
-        
+        Check if session exists
+
         Args:
-            session_id: 세션 ID
-            
+            session_id: Session ID
+
         Returns:
-            존재 여부
+            Existence status
         """
         if not self._connection_available:
             return False
-            
+
         try:
             key = self._make_key("session", session_id)
             return self._redis_client.exists(key) > 0
-            
+
         except Exception as e:
-            logger.error(f"세션 존재 확인 실패: {session_id} - {e}")
+            logger.error(f"Session existence check failed: {session_id} - {e}")
             return False
-    
+
     def update_session_field(self, session_id: str, field: str, value: Any) -> bool:
         """
-        세션의 특정 필드만 업데이트
-        
+        Update specific field of a session
+
         Args:
-            session_id: 세션 ID
-            field: 필드명
-            value: 새 값
-            
+            session_id: Session ID
+            field: Field name
+            value: New value
+
         Returns:
-            성공 여부
+            Success status
         """
         if not self._connection_available:
             return False
-            
+
         try:
             session_data = self.get_session(session_id)
             if not session_data:
-                logger.warning(f"업데이트할 세션을 찾을 수 없음: {session_id}")
+                logger.warning(f"Session not found for update: {session_id}")
                 return False
-                
+
             session_data[field] = value
             return self.save_session(session_id, session_data)
-            
+
         except Exception as e:
-            logger.error(f"세션 필드 업데이트 실패: {session_id}.{field} - {e}")
+            logger.error(f"Session field update failed: {session_id}.{field} - {e}")
             return False
-    
-    # ========== 유틸리티 ==========
-    
+
+    # ========== Utilities ==========
+
     def _serialize_session_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """세션 데이터 직렬화 (datetime -> ISO string)"""
+        """Serialize session data (datetime -> ISO string)"""
         result = {}
         for key, value in data.items():
             if isinstance(value, datetime):
@@ -349,12 +349,12 @@ class RedisClient:
             else:
                 result[key] = value
         return result
-    
+
     def _deserialize_session_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """세션 데이터 역직렬화 (ISO string -> datetime)"""
+        """Deserialize session data (ISO string -> datetime)"""
         result = {}
         datetime_fields = ['created_at', 'updated_at', 'started_at', 'stopped_at']
-        
+
         for key, value in data.items():
             if key in datetime_fields and isinstance(value, str):
                 try:
@@ -366,142 +366,142 @@ class RedisClient:
             else:
                 result[key] = value
         return result
-    
+
     def clear_all_sessions(self) -> bool:
         """
-        모든 세션 삭제 (주의: 위험한 작업)
-        
+        Delete all sessions (Caution: dangerous operation)
+
         Returns:
-            성공 여부
+            Success status
         """
         if not self._connection_available:
             return False
-            
+
         try:
             session_ids = self.list_sessions()
             for session_id in session_ids:
                 self.delete_session(session_id)
-            
-            logger.info(f"전체 세션 삭제 완료: {len(session_ids)}개")
+
+            logger.info(f"All sessions deleted: {len(session_ids)} sessions")
             return True
-            
+
         except Exception as e:
-            logger.error(f"전체 세션 삭제 실패: {e}")
+            logger.error(f"All sessions deletion failed: {e}")
             return False
-    
-    # ========== 일반 키-값 저장 ==========
-    
+
+    # ========== General Key-Value Storage ==========
+
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """
-        일반 키-값 저장
-        
+        Save general key-value pair
+
         Args:
-            key: 키 (prefix 자동 추가)
-            value: 값 (자동 JSON 직렬화)
-            ttl: TTL (초)
-            
+            key: Key (prefix automatically added)
+            value: Value (automatically JSON serialized)
+            ttl: TTL (seconds)
+
         Returns:
-            성공 여부
+            Success status
         """
         if not self._connection_available:
             return False
-            
+
         try:
             full_key = self._make_key(key)
             data = json.dumps(value) if not isinstance(value, str) else value
-            
+
             if ttl:
                 self._redis_client.setex(full_key, ttl, data)
             else:
                 self._redis_client.set(full_key, data)
-                
+
             return True
-            
+
         except Exception as e:
-            logger.error(f"Redis set 실패: {key} - {e}")
+            logger.error(f"Redis set failed: {key} - {e}")
             return False
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """
-        일반 키-값 조회
-        
+        Retrieve general key-value pair
+
         Args:
-            key: 키 (prefix 자동 추가)
-            default: 기본값
-            
+            key: Key (prefix automatically added)
+            default: Default value
+
         Returns:
-            값 또는 기본값
+            Value or default value
         """
         if not self._connection_available:
             return default
-            
+
         try:
             full_key = self._make_key(key)
             data = self._redis_client.get(full_key)
-            
+
             if data is None:
                 return default
-                
+
             try:
                 return json.loads(data)
             except json.JSONDecodeError:
                 return data
-                
+
         except Exception as e:
-            logger.error(f"Redis get 실패: {key} - {e}")
+            logger.error(f"Redis get failed: {key} - {e}")
             return default
-    
+
     def delete(self, key: str) -> bool:
         """
-        일반 키 삭제
-        
+        Delete general key
+
         Args:
-            key: 키 (prefix 자동 추가)
-            
+            key: Key (prefix automatically added)
+
         Returns:
-            성공 여부
+            Success status
         """
         if not self._connection_available:
             return False
-            
+
         try:
             full_key = self._make_key(key)
             self._redis_client.delete(full_key)
             return True
-            
+
         except Exception as e:
-            logger.error(f"Redis delete 실패: {key} - {e}")
+            logger.error(f"Redis delete failed: {key} - {e}")
             return False
-    
+
     def exists(self, key: str) -> bool:
         """
-        키 존재 여부 확인
-        
+        Check if key exists
+
         Args:
-            key: 키 (prefix 자동 추가)
-            
+            key: Key (prefix automatically added)
+
         Returns:
-            존재 여부
+            Existence status
         """
         if not self._connection_available:
             return False
-            
+
         try:
             full_key = self._make_key(key)
             return self._redis_client.exists(full_key) > 0
-            
+
         except Exception as e:
-            logger.error(f"Redis exists 실패: {key} - {e}")
+            logger.error(f"Redis exists failed: {key} - {e}")
             return False
-    
-    # ========== 통계 ==========
-    
+
+    # ========== Statistics ==========
+
     def get_stats(self) -> Dict[str, Any]:
         """
-        Redis 상태 및 세션 통계 반환
-        
+        Return Redis status and session statistics
+
         Returns:
-            통계 정보
+            Statistics information
         """
         stats = {
             "connected": self._connection_available,
@@ -512,14 +512,14 @@ class RedisClient:
             "session_count": 0,
             "redis_info": None
         }
-        
+
         if not self._connection_available:
             return stats
-            
+
         try:
             stats["session_count"] = len(self.list_sessions())
-            
-            # Redis 서버 정보
+
+            # Redis server info
             info = self._redis_client.info()
             stats["redis_info"] = {
                 "version": info.get("redis_version"),
@@ -527,14 +527,14 @@ class RedisClient:
                 "used_memory_human": info.get("used_memory_human"),
                 "uptime_in_days": info.get("uptime_in_days")
             }
-            
+
         except Exception as e:
-            logger.error(f"Redis 통계 조회 실패: {e}")
-            
+            logger.error(f"Redis stats retrieval failed: {e}")
+
         return stats
 
 
-# 편의를 위한 전역 함수
+# Global function for convenience
 def get_redis_client() -> RedisClient:
-    """Redis 클라이언트 싱글톤 인스턴스 반환"""
+    """Return Redis client singleton instance"""
     return RedisClient.get_instance()

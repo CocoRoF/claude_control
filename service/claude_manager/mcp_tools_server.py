@@ -1,29 +1,29 @@
 """
 LangChain Tools to MCP Server Wrapper
 
-LangChain의 BaseTool을 MCP 서버로 래핑하여 Claude Code 세션에서 사용할 수 있게 합니다.
+Wraps LangChain's BaseTool as MCP server for use in Claude Code sessions.
 
-사용 방법:
-    1. LangChain 도구 정의
-    2. MCPToolsServer로 래핑
-    3. 서버 실행 또는 Claude Control 세션에 연결
+Usage:
+    1. Define LangChain tools
+    2. Wrap with MCPToolsServer
+    3. Run server or connect to Claude Control session
 
 Example:
     ```python
     from langchain_core.tools import tool
     from service.claude_manager.mcp_tools_server import MCPToolsServer
-    
+
     @tool
     def search_web(query: str) -> str:
         '''Search the web for information'''
         return f"Results for: {query}"
-    
-    @tool  
+
+    @tool
     def calculate(expression: str) -> str:
         '''Calculate a math expression'''
         return str(eval(expression))
-    
-    # MCP 서버로 실행
+
+    # Run as MCP server
     server = MCPToolsServer(
         name="custom-tools",
         tools=[search_web, calculate]
@@ -39,7 +39,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# MCP SDK가 설치되어 있는지 확인
+# Check if MCP SDK is installed
 try:
     from mcp.server.fastmcp import FastMCP
     MCP_AVAILABLE = True
@@ -47,7 +47,7 @@ except ImportError:
     MCP_AVAILABLE = False
     logger.warning("MCP SDK not installed. Install with: pip install mcp")
 
-# LangChain이 설치되어 있는지 확인
+# Check if LangChain is installed
 try:
     from langchain_core.tools import BaseTool, StructuredTool
     LANGCHAIN_AVAILABLE = True
@@ -58,17 +58,17 @@ except ImportError:
 
 class MCPToolsServer:
     """
-    LangChain 도구를 MCP 서버로 래핑
-    
-    LangChain의 BaseTool 또는 @tool 데코레이터로 정의된 도구들을
-    MCP 서버로 변환하여 Claude Code에서 사용할 수 있게 합니다.
-    
+    Wrap LangChain tools as MCP server
+
+    Converts tools defined with LangChain's BaseTool or @tool decorator
+    to MCP server for use in Claude Code.
+
     Attributes:
-        name: MCP 서버 이름
-        tools: LangChain 도구 리스트
-        mcp: FastMCP 인스턴스
+        name: MCP server name
+        tools: LangChain tools list
+        mcp: FastMCP instance
     """
-    
+
     def __init__(
         self,
         name: str = "langchain-tools",
@@ -77,71 +77,71 @@ class MCPToolsServer:
     ):
         """
         Args:
-            name: MCP 서버 이름
-            tools: LangChain BaseTool 리스트
-            description: 서버 설명
+            name: MCP server name
+            tools: LangChain BaseTool list
+            description: Server description
         """
         if not MCP_AVAILABLE:
             raise ImportError(
-                "MCP SDK가 설치되어 있지 않습니다. "
-                "'pip install mcp' 명령으로 설치하세요."
+                "MCP SDK is not installed. "
+                "Install with 'pip install mcp'."
             )
-        
+
         self.name = name
         self._tools: List[Any] = []
         self._description = description or f"LangChain tools wrapped as MCP server: {name}"
-        
-        # FastMCP 인스턴스 생성
+
+        # Create FastMCP instance
         self.mcp = FastMCP(name)
-        
-        # 도구 등록
+
+        # Register tools
         if tools:
             for tool in tools:
                 self.add_tool(tool)
-    
+
     def add_tool(self, tool: Any) -> None:
         """
-        LangChain 도구 추가
-        
+        Add LangChain tool
+
         Args:
-            tool: LangChain BaseTool 또는 @tool 데코레이터로 정의된 함수
+            tool: LangChain BaseTool or function defined with @tool decorator
         """
         if not LANGCHAIN_AVAILABLE:
             raise ImportError(
-                "LangChain이 설치되어 있지 않습니다. "
-                "'pip install langchain-core' 명령으로 설치하세요."
+                "LangChain is not installed. "
+                "Install with 'pip install langchain-core'."
             )
-        
+
         self._tools.append(tool)
         self._register_mcp_tool(tool)
-    
+
     def _register_mcp_tool(self, tool: Any) -> None:
         """
-        LangChain 도구를 MCP 도구로 등록
-        
+        Register LangChain tool as MCP tool
+
         Args:
-            tool: LangChain 도구
+            tool: LangChain tool
         """
-        # 도구 이름과 설명 추출
+        # Extract tool name and description
         if hasattr(tool, 'name'):
             tool_name = tool.name
         elif hasattr(tool, '__name__'):
             tool_name = tool.__name__
         else:
             tool_name = str(tool)
-        
+
         if hasattr(tool, 'description'):
             tool_description = tool.description
         elif hasattr(tool, '__doc__') and tool.__doc__:
             tool_description = tool.__doc__
         else:
             tool_description = f"LangChain tool: {tool_name}"
-        
-        # 도구 함수 생성
+
+        # Create tool function
         async def mcp_tool_wrapper(**kwargs) -> str:
-            """MCP 도구 래퍼"""
+            """MCP tool wrapper"""
             try:
-                # LangChain 도구 실행
+                # Execute LangChain tool
                 if hasattr(tool, 'ainvoke'):
                     result = await tool.ainvoke(kwargs)
                 elif hasattr(tool, 'invoke'):
@@ -152,27 +152,27 @@ class MCPToolsServer:
                     result = tool(**kwargs)
                 else:
                     result = str(tool)
-                
-                # 결과를 문자열로 변환
+
+                # Convert result to string
                 if isinstance(result, str):
                     return result
                 elif isinstance(result, (dict, list)):
                     return json.dumps(result, ensure_ascii=False, indent=2)
                 else:
                     return str(result)
-                    
+
             except Exception as e:
                 logger.error(f"Tool execution error ({tool_name}): {e}")
                 return f"Error: {str(e)}"
-        
-        # 함수 메타데이터 설정
+
+        # Set function metadata
         mcp_tool_wrapper.__name__ = tool_name
         mcp_tool_wrapper.__doc__ = tool_description
-        
-        # MCP 도구로 등록
+
+        # Register as MCP tool
         self.mcp.tool()(mcp_tool_wrapper)
         logger.info(f"Registered MCP tool: {tool_name}")
-    
+
     def add_function(
         self,
         func: Callable,
@@ -180,48 +180,48 @@ class MCPToolsServer:
         description: Optional[str] = None
     ) -> None:
         """
-        일반 Python 함수를 MCP 도구로 추가
-        
+        Add regular Python function as MCP tool
+
         Args:
-            func: Python 함수
-            name: 도구 이름 (기본값: 함수 이름)
-            description: 도구 설명 (기본값: docstring)
+            func: Python function
+            name: Tool name (default: function name)
+            description: Tool description (default: docstring)
         """
         tool_name = name or func.__name__
         tool_description = description or func.__doc__ or f"Function: {tool_name}"
-        
-        # 함수 메타데이터 설정
+
+        # Set function metadata
         wrapper = func
         wrapper.__name__ = tool_name
         wrapper.__doc__ = tool_description
-        
-        # MCP 도구로 등록
+
+        # Register as MCP tool
         self.mcp.tool()(wrapper)
         logger.info(f"Registered MCP function: {tool_name}")
-    
+
     def run(self, transport: str = "stdio", host: str = "0.0.0.0", port: int = 8080) -> None:
         """
-        MCP 서버 실행
-        
+        Run MCP server
+
         Args:
-            transport: 트랜스포트 타입 ("stdio" 또는 "http")
-            host: HTTP 서버 호스트 (transport="http"일 때)
-            port: HTTP 서버 포트 (transport="http"일 때)
+            transport: Transport type ("stdio" or "http")
+            host: HTTP server host (when transport="http")
+            port: HTTP server port (when transport="http")
         """
         logger.info(f"Starting MCP server '{self.name}' with {len(self._tools)} tools")
         logger.info(f"Transport: {transport}")
-        
+
         if transport == "http":
             self.mcp.run(transport="http", host=host, port=port)
         else:
             self.mcp.run(transport="stdio")
-    
+
     def get_tool_list(self) -> List[Dict[str, str]]:
         """
-        등록된 도구 목록 반환
-        
+        Return list of registered tools
+
         Returns:
-            도구 정보 리스트
+            List of tool information
         """
         tools = []
         for tool in self._tools:
@@ -231,16 +231,16 @@ class MCPToolsServer:
                 name = tool.__name__
             else:
                 name = str(tool)
-            
+
             if hasattr(tool, 'description'):
                 desc = tool.description
             elif hasattr(tool, '__doc__'):
                 desc = tool.__doc__ or ""
             else:
                 desc = ""
-            
+
             tools.append({"name": name, "description": desc})
-        
+
         return tools
 
 
@@ -251,16 +251,16 @@ def create_mcp_server_script(
     output_path: Optional[str] = None
 ) -> str:
     """
-    LangChain 도구를 MCP 서버로 실행하는 스크립트 생성
-    
+    Create script to run LangChain tools as MCP server
+
     Args:
-        tools_module_path: 도구가 정의된 모듈 경로
-        tool_names: 사용할 도구 이름 리스트
-        server_name: MCP 서버 이름
-        output_path: 출력 스크립트 경로 (None이면 문자열 반환)
-        
+        tools_module_path: Module path where tools are defined
+        tool_names: List of tool names to use
+        server_name: MCP server name
+        output_path: Output script path (returns string if None)
+
     Returns:
-        생성된 스크립트 내용
+        Generated script content
     """
     script = f'''#!/usr/bin/env python3
 """
@@ -281,28 +281,28 @@ if __name__ == "__main__":
     )
     server.run(transport="stdio")
 '''
-    
+
     if output_path:
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(script)
         logger.info(f"MCP server script created: {output_path}")
-    
+
     return script
 
 
 # =============================================================================
-# 편의 함수: 자주 사용되는 MCP 서버 설정 생성
+# Convenience functions: Create commonly used MCP server configs
 # =============================================================================
 
 def create_filesystem_mcp_config(paths: List[str]) -> Dict[str, Any]:
     """
-    파일시스템 MCP 서버 설정 생성
-    
+    Create filesystem MCP server config
+
     Args:
-        paths: 접근 허용할 경로 리스트
-        
+        paths: List of paths to allow access
+
     Returns:
-        MCP 서버 설정 딕셔너리
+        MCP server config dictionary
     """
     return {
         "type": "stdio",
@@ -313,10 +313,10 @@ def create_filesystem_mcp_config(paths: List[str]) -> Dict[str, Any]:
 
 def create_github_mcp_config() -> Dict[str, Any]:
     """
-    GitHub MCP 서버 설정 생성
-    
+    Create GitHub MCP server config
+
     Returns:
-        MCP 서버 설정 딕셔너리
+        MCP server config dictionary
     """
     return {
         "type": "http",
@@ -326,13 +326,13 @@ def create_github_mcp_config() -> Dict[str, Any]:
 
 def create_postgres_mcp_config(dsn: str) -> Dict[str, Any]:
     """
-    PostgreSQL MCP 서버 설정 생성
-    
+    Create PostgreSQL MCP server config
+
     Args:
-        dsn: PostgreSQL 연결 문자열
-        
+        dsn: PostgreSQL connection string
+
     Returns:
-        MCP 서버 설정 딕셔너리
+        MCP server config dictionary
     """
     return {
         "type": "stdio",
@@ -350,21 +350,21 @@ def create_custom_mcp_config(
     headers: Optional[Dict[str, str]] = None
 ) -> Dict[str, Any]:
     """
-    커스텀 MCP 서버 설정 생성
-    
+    Create custom MCP server config
+
     Args:
-        server_type: 서버 타입 ("stdio", "http", "sse")
-        command: 실행 명령어 (stdio용)
-        args: 명령어 인자 (stdio용)
-        url: 서버 URL (http/sse용)
-        env: 환경 변수
-        headers: HTTP 헤더
-        
+        server_type: Server type ("stdio", "http", "sse")
+        command: Execution command (for stdio)
+        args: Command arguments (for stdio)
+        url: Server URL (for http/sse)
+        env: Environment variables
+        headers: HTTP headers
+
     Returns:
-        MCP 서버 설정 딕셔너리
+        MCP server config dictionary
     """
     config: Dict[str, Any] = {"type": server_type}
-    
+
     if server_type == "stdio":
         if command:
             config["command"] = command
@@ -377,5 +377,5 @@ def create_custom_mcp_config(
             config["url"] = url
         if headers:
             config["headers"] = headers
-    
+
     return config

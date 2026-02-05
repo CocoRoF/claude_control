@@ -1,5 +1,5 @@
 {
   "type": "http",
   "url": "https://api.githubcopilot.com/mcp/",
-  "description": "GitHub MCP - PR, Issue, Repository 관리"
+  "description": "GitHub MCP - PR, Issue, Repository management"
 }

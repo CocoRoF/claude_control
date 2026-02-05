@@ -1,5 +1,5 @@
 """
-Proxy 모듈
+Proxy Module
 """
 from service.proxy.internal_proxy import InternalProxy, get_internal_proxy
 
