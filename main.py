@@ -5,7 +5,10 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from controller.claude_controller import router as claude_router, session_manager
+from controller.command_controller import router as command_router
 from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import init_pod_info, get_pod_info
 from service.middleware.session_router import SessionRoutingMiddleware
@@ -227,8 +230,24 @@ async def redis_stats():
     return {"error": "Redis client not initialized"}
 
 
-# Register Claude router
+# Register routers
 app.include_router(claude_router)
+app.include_router(command_router)
+
+# Mount static files for Web UI Dashboard
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    logger.info(f"✅ Static files mounted from {static_dir}")
+
+
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the Web UI Dashboard"""
+    index_file = static_dir / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return {"error": "Dashboard not found"}
 
 if __name__ == "__main__":
     try:
