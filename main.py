@@ -3,6 +3,7 @@ import asyncio
 import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
+from typing import Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from controller.claude_controller import router as claude_router, session_manager
@@ -37,8 +38,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def print_claude_control_logo():
-    """Print Claude Control logo"""
+def print_claude_control_logo() -> None:
+    """Print Claude Control logo."""
     logo = """
      ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗     ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  ██████╗ ██╗
     ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝    ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔═══██╗██║
@@ -52,8 +53,8 @@ def print_claude_control_logo():
     logger.info(logo)
 
 
-def print_step_banner(step: str, title: str, description: str = ""):
-    """Print step banner"""
+def print_step_banner(step: str, title: str, description: str = "") -> None:
+    """Print step banner with formatted output."""
     banner = f"""
     ┌{'─' * 60}┐
     │  {step}: {title:<52}│
@@ -83,8 +84,15 @@ def init_redis_client(app: FastAPI) -> RedisClient:
     return redis_client
 
 
-def get_app_redis_client(app: FastAPI) -> RedisClient:
-    """Get Redis client from app.state"""
+def get_app_redis_client(app: FastAPI) -> Optional[RedisClient]:
+    """Get Redis client from app.state.
+
+    Args:
+        app: FastAPI application instance
+
+    Returns:
+        RedisClient instance if available, None otherwise
+    """
     return getattr(app.state, 'redis_client', None)
 
 
@@ -134,10 +142,6 @@ async def lifespan(app: FastAPI):
     proxy = get_internal_proxy()
     await proxy.close()
 
-    # Internal Proxy client shutdown
-    proxy = get_internal_proxy()
-    await proxy.close()
-
     # Cleanup all sessions (10 second total timeout)
     async def cleanup_all_sessions():
         sessions = session_manager.list_sessions()
@@ -165,10 +169,13 @@ app = FastAPI(
 )
 
 # CORS configuration (allow backend access)
+# WARNING: Using wildcard origins with allow_credentials=True violates CORS spec
+# For production, specify exact origins or disable credentials
+cors_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to specific origins in production
-    allow_credentials=True,
+    allow_origins=cors_origins,  # Configure via CORS_ORIGINS environment variable
+    allow_credentials=True if cors_origins != ["*"] else False,  # Disable credentials for wildcard
     allow_methods=["*"],
     allow_headers=["*"],
 )

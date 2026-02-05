@@ -1,12 +1,13 @@
 """
 Redis Client for Claude Control
 
-Client for managing Claude sessions in Redis
-In multi-pod environments, Redis acts as the source of truth
+Client for managing Claude sessions in Redis.
+In multi-pod environments, Redis acts as the source of truth.
 """
 import os
 import json
 import logging
+import threading
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -18,13 +19,15 @@ REDIS_AVAILABLE = True
 
 class RedisClient:
     """
-    Redis client for Claude session management
+    Redis client for Claude session management.
 
-    Implemented as singleton pattern - only one instance used across the application
+    Implemented as singleton pattern - only one instance used across the application.
+    Thread-safe initialization using a lock.
     """
 
     _instance: Optional['RedisClient'] = None
     _initialized: bool = False
+    _lock: threading.Lock = threading.Lock()
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -38,38 +41,48 @@ class RedisClient:
         db: Optional[int] = None,
         password: Optional[str] = None,
         key_prefix: str = "claude-control"
-    ):
-        # Skip if already initialized (singleton)
-        if RedisClient._initialized:
-            return
+    ) -> None:
+        """Initialize Redis client with thread-safe singleton pattern.
 
-        if not REDIS_AVAILABLE:
-            logger.error("Cannot initialize - Redis package not installed")
+        Args:
+            host: Redis host address
+            port: Redis port number
+            db: Redis database number
+            password: Redis password
+            key_prefix: Key prefix for multi-tenant support
+        """
+        # Thread-safe initialization check
+        with RedisClient._lock:
+            if RedisClient._initialized:
+                return
+
+            if not REDIS_AVAILABLE:
+                logger.error("Cannot initialize - Redis package not installed")
+                self._connection_available = False
+                RedisClient._initialized = True
+                return
+
+            # Read Redis connection info from environment variables
+            self._host = host or os.getenv('REDIS_HOST', 'redis')
+            self._port = port or int(os.getenv('REDIS_PORT', '6379'))
+            self._db = db or int(os.getenv('REDIS_DB', '0'))
+            self._password = password or os.getenv('REDIS_PASSWORD')
+
+            # Connection timeout settings
+            self._socket_timeout = float(os.getenv('REDIS_SOCKET_TIMEOUT', '5'))
+            self._socket_connect_timeout = float(os.getenv('REDIS_CONNECT_TIMEOUT', '3'))
+
+            # Key prefix (multi-tenant support)
+            self._key_prefix = key_prefix
+
+            # Connection state
             self._connection_available = False
+            self._redis_client: Optional['redis.Redis'] = None
+
+            # Attempt Redis connection
+            self._connect()
+
             RedisClient._initialized = True
-            return
-
-        # Read Redis connection info from environment variables
-        self._host = host or os.getenv('REDIS_HOST', 'redis')
-        self._port = port or int(os.getenv('REDIS_PORT', '6379'))
-        self._db = db or int(os.getenv('REDIS_DB', '0'))
-        self._password = password or os.getenv('REDIS_PASSWORD')
-
-        # Connection timeout settings
-        self._socket_timeout = float(os.getenv('REDIS_SOCKET_TIMEOUT', '5'))
-        self._socket_connect_timeout = float(os.getenv('REDIS_CONNECT_TIMEOUT', '3'))
-
-        # Key prefix (multi-tenant support)
-        self._key_prefix = key_prefix
-
-        # Connection state
-        self._connection_available = False
-        self._redis_client: Optional['redis.Redis'] = None
-
-        # Attempt Redis connection
-        self._connect()
-
-        RedisClient._initialized = True
 
     def _connect(self) -> bool:
         """Connect to Redis server"""
@@ -116,10 +129,15 @@ class RedisClient:
         return cls._instance
 
     @classmethod
-    def reset_instance(cls):
-        """Reset instance (for testing)"""
-        cls._instance = None
-        cls._initialized = False
+    def reset_instance(cls) -> None:
+        """Reset singleton instance for testing purposes.
+
+        Warning:
+            This should only be used in test environments.
+        """
+        with cls._lock:
+            cls._instance = None
+            cls._initialized = False
 
     # ========== Connection Management ==========
 
@@ -147,7 +165,14 @@ class RedisClient:
     # ========== Key Management ==========
 
     def _make_key(self, *parts: str) -> str:
-        """Generate key (with prefix)"""
+        """Generate Redis key with prefix.
+
+        Args:
+            *parts: Key parts to join
+
+        Returns:
+            Formatted key string with prefix
+        """
         return f"{self._key_prefix}:{':'.join(parts)}"
 
     # ========== Session Management ==========

@@ -1,12 +1,12 @@
 """
-Session Routing Middleware
+Session Routing Middleware.
 
-Session-based request routing in multi-pod environments
-Proxies to the appropriate Pod if session is on a different Pod
+Session-based request routing in multi-pod environments.
+Proxies to the appropriate Pod if session is on a different Pod.
 """
 import re
 import logging
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -44,12 +44,22 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
     Proxies to the Pod containing the session if not on current Pod
     """
 
-    def __init__(self, app: ASGIApp, redis_client: Optional[RedisClient] = None):
+    def __init__(self, app: ASGIApp, redis_client: Optional[RedisClient] = None) -> None:
+        """Initialize session routing middleware.
+
+        Args:
+            app: ASGI application
+            redis_client: Optional RedisClient instance
+        """
         super().__init__(app)
         self._redis: Optional[RedisClient] = redis_client
 
-    def set_redis_client(self, redis_client: RedisClient):
-        """Set Redis client (lazy injection)"""
+    def set_redis_client(self, redis_client: RedisClient) -> None:
+        """Set Redis client (lazy injection).
+
+        Args:
+            redis_client: RedisClient instance
+        """
         self._redis = redis_client
 
     @property
@@ -169,12 +179,17 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
 
         return None
 
-    def _get_session_pod_info(self, session_id: str) -> Optional[tuple]:
-        """
-        Get session's Pod info from Redis
+    def _get_session_pod_info(self, session_id: str) -> Optional[Tuple[str, str]]:
+        """Get session's Pod info from Redis.
+
+        Args:
+            session_id: Session identifier
 
         Returns:
-            (pod_name, pod_ip) or None
+            Tuple of (pod_name, pod_ip) or None if not found
+
+        Raises:
+            None - exceptions are caught and logged
         """
         if not self.redis or not self.redis.is_connected:
             logger.warning("Redis not available for session routing")

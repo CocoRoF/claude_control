@@ -1,8 +1,8 @@
 """
-Pod Information Manager
+Pod Information Manager.
 
-Module for automatically detecting Kubernetes Pod information
-Used for session routing in multi-pod environments
+Module for automatically detecting Kubernetes Pod information.
+Used for session routing in multi-pod environments.
 
 Works automatically without environment variable settings:
 - Pod Name: Automatically extracted from hostname
@@ -11,6 +11,7 @@ Works automatically without environment variable settings:
 import os
 import socket
 import logging
+import uuid
 from typing import Optional, List
 from dataclasses import dataclass
 
@@ -39,8 +40,12 @@ _pod_info: Optional[PodInfo] = None
 
 
 def _get_all_local_ips() -> List[str]:
-    """Get all local IP addresses"""
-    ips = []
+    """Get all local IP addresses.
+
+    Returns:
+        List of IP addresses excluding loopback
+    """
+    ips: List[str] = []
     try:
         # Get IPs from all network interfaces
         hostname = socket.gethostname()
@@ -53,13 +58,15 @@ def _get_all_local_ips() -> List[str]:
 
 
 def _get_local_ip() -> str:
-    """
-    Automatically detect local IP address
+    """Automatically detect local IP address.
 
     Tries multiple methods:
-    1. Check default interface IP by external connection attempt
+    1. Check default interface IP by external connection attempt (UDP socket)
     2. IP lookup by hostname
     3. Find non-localhost IP from all interfaces
+
+    Returns:
+        Detected IP address, defaults to 127.0.0.1 if detection fails
     """
     # Method 1: UDP socket external connection attempt (doesn't actually send packets)
     try:
@@ -93,10 +100,12 @@ def _get_local_ip() -> str:
 
 
 def _get_pod_name() -> str:
-    """
-    Automatically detect Pod name
+    """Automatically detect Pod name.
 
-    In Kubernetes, hostname is the same as Pod name
+    In Kubernetes, hostname is the same as Pod name.
+
+    Returns:
+        Pod name from environment variables or hostname, or generated UUID-based name
     """
     # Environment variable takes priority (if set)
     if os.getenv('POD_NAME'):
@@ -111,16 +120,17 @@ def _get_pod_name() -> str:
     except Exception:
         pass
 
-    # Fallback
-    import uuid
+    # Fallback with generated unique identifier
     return f"mcp-station-{uuid.uuid4().hex[:8]}"
 
 
 def _get_namespace() -> str:
-    """
-    Automatically detect Kubernetes namespace
+    """Automatically detect Kubernetes namespace.
 
-    Read from ServiceAccount mount path
+    Reads from ServiceAccount mount path in Kubernetes environments.
+
+    Returns:
+        Namespace name, defaults to 'default' if not in Kubernetes
     """
     # Environment variable takes priority
     if os.getenv('POD_NAMESPACE'):

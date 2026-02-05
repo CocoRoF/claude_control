@@ -1,5 +1,5 @@
 """
-MCP Loader
+MCP Loader.
 
 Automatically loads JSON configs from mcp/ folder and tools from tools/ folder
 to create global MCP configurations available for all Claude Code sessions.
@@ -14,7 +14,6 @@ Usage:
     # Get global MCP config
     config = get_global_mcp_config()
 """
-import asyncio
 import importlib.util
 import json
 import logging
@@ -22,7 +21,8 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Pattern
+from types import ModuleType
 
 from service.claude_manager.models import (
     MCPConfig,
@@ -42,21 +42,19 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 
 def get_global_mcp_config() -> Optional[MCPConfig]:
-    """
-    Return global MCP config
+    """Return global MCP configuration.
 
     Returns:
-        Loaded global MCP config or None
+        Loaded global MCP config or None if not initialized
     """
     return _global_mcp_config
 
 
 def set_global_mcp_config(config: MCPConfig) -> None:
-    """
-    Set global MCP config
+    """Set global MCP configuration.
 
     Args:
-        config: MCP config to set
+        config: MCP config object to set as global
     """
     global _global_mcp_config
     _global_mcp_config = config
@@ -152,8 +150,15 @@ class MCPLoader:
                 logger.warning(f"   ⚠️ Failed to load {json_file.name}: {e}")
 
     def _expand_env_vars(self, data: Any) -> Any:
-        """
-        Expand environment variables in config (${VAR} or ${VAR:-default} format)
+        """Expand environment variables in config strings.
+
+        Supports ${VAR} and ${VAR:-default} syntax for environment variable expansion.
+
+        Args:
+            data: Configuration data (string, dict, list, or other)
+
+        Returns:
+            Data with environment variables expanded
         """
         if isinstance(data, str):
             # Find ${VAR} or ${VAR:-default} patterns
@@ -180,7 +185,17 @@ class MCPLoader:
         return data
 
     def _create_server_config(self, data: Dict[str, Any]) -> Optional[MCPServerConfig]:
-        """Create MCP server config from JSON data"""
+        """Create MCP server configuration from parsed JSON data.
+
+        Args:
+            data: Dictionary with server configuration
+
+        Returns:
+            MCPServerConfig instance or None if invalid
+
+        Note:
+            Validates required fields based on server type (stdio, http, sse)
+        """
         server_type = data.get('type', 'stdio')
 
         if server_type == 'stdio':
@@ -214,7 +229,11 @@ class MCPLoader:
         return None
 
     def _load_tools(self) -> None:
-        """Load tool files from tools/ folder"""
+        """Load tool files from tools/ folder.
+
+        Searches for *_tool.py and *_tools.py files and imports them.
+        Tools are collected via TOOLS export or auto-discovery.
+        """
         if not self.tools_dir.exists():
             logger.info(f"📁 Tools directory not found: {self.tools_dir}")
             return
@@ -246,7 +265,17 @@ class MCPLoader:
                 logger.warning(f"   ⚠️ Failed to load {tool_file.name}: {e}")
 
     def _load_tools_from_file(self, file_path: Path) -> List[Any]:
-        """Load tools from file"""
+        """Load tools from Python file.
+
+        Args:
+            file_path: Path to tool Python file
+
+        Returns:
+            List of tool objects (BaseTool or ToolWrapper instances)
+
+        Note:
+            Prefers TOOLS export if defined, otherwise auto-discovers tools
+        """
         # Dynamically load module
         spec = importlib.util.spec_from_file_location(file_path.stem, file_path)
         if spec is None or spec.loader is None:
@@ -294,8 +323,13 @@ class MCPLoader:
             logger.info(f"   🔧 Registered {len(self.tools)} tools as MCP server: _builtin_tools")
 
     def _create_tools_server_script(self) -> Optional[Path]:
-        """
-        Create script to run tools as MCP server
+        """Create auto-generated MCP server script for loaded tools.
+
+        Returns:
+            Path to generated _mcp_server.py script, or None if no tools
+
+        Note:
+            Generated script should not be edited manually - it's regenerated on startup
         """
         # Collect tool file list
         tool_files = list(self.tools_dir.glob("*_tool.py")) + list(self.tools_dir.glob("*_tools.py"))

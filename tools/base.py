@@ -1,5 +1,5 @@
 """
-Tools Base Module
+Tools Base Module.
 
 Provides base interfaces and decorators for tool definition.
 
@@ -25,8 +25,9 @@ Usage:
 import functools
 import inspect
 import json
+import re
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints
+from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints, Type
 
 
 class BaseTool(ABC):
@@ -62,8 +63,16 @@ class BaseTool(ABC):
             self.parameters = self._generate_parameters_schema()
 
     def _generate_parameters_schema(self) -> Dict[str, Any]:
-        """Generate parameter schema from run method signature"""
-        schema = {
+        """Generate JSON Schema parameter specification from run method signature.
+
+        Returns:
+            JSON Schema object specification
+
+        Note:
+            Follows JSON Schema specification for object types.
+            Silently handles errors to avoid breaking tool registration.
+        """
+        schema: Dict[str, Any] = {
             "type": "object",
             "properties": {},
             "required": []
@@ -92,14 +101,27 @@ class BaseTool(ABC):
                 else:
                     schema["properties"][param_name]["default"] = param.default
 
-        except Exception:
-            pass
+        except (ValueError, TypeError) as e:
+            # Log specific schema generation errors without breaking tool registration
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Schema generation warning for {self.name}: {e}")
 
         return schema
 
     @staticmethod
-    def _python_type_to_json(python_type: type) -> str:
-        """Convert Python type to JSON schema type"""
+    def _python_type_to_json(python_type: Type[Any]) -> str:
+        """Convert Python type to JSON Schema type string.
+
+        Args:
+            python_type: Python type annotation
+
+        Returns:
+            JSON Schema type string (string, integer, number, boolean, array, object, null)
+
+        Note:
+            Handles Optional and Union types by unwrapping to the non-None type.
+        """
         type_map = {
             str: "string",
             int: "integer",
@@ -283,12 +305,26 @@ def tool(
 
 
 def is_tool(obj: Any) -> bool:
-    """Check if object is a tool"""
+    """Check if object is a valid tool instance.
+
+    Args:
+        obj: Object to check
+
+    Returns:
+        True if object is BaseTool or ToolWrapper instance
+    """
     return isinstance(obj, (BaseTool, ToolWrapper))
 
 
 def get_tool_info(obj: Any) -> Optional[Dict[str, Any]]:
-    """Extract tool information"""
+    """Extract tool metadata as dictionary.
+
+    Args:
+        obj: Tool object to extract info from
+
+    Returns:
+        Dictionary with name, description, and parameters, or None if not a tool
+    """
     if isinstance(obj, (BaseTool, ToolWrapper)):
         return obj.to_dict()
     return None

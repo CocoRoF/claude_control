@@ -313,9 +313,10 @@ class ClaudeProcess:
                 # Skip permission prompts option (required for autonomous mode)
                 # 1. Function argument takes priority
                 # 2. Check CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS environment variable
+                # WARNING: Default is 'false' for security - must explicitly opt-in
                 should_skip_permissions = skip_permissions
                 if should_skip_permissions is None:
-                    env_skip = os.environ.get('CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS', 'true').lower()
+                    env_skip = os.environ.get('CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS', 'false').lower()
                     should_skip_permissions = env_skip in ('true', '1', 'yes', 'on')
 
                 if should_skip_permissions:
