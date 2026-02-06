@@ -259,7 +259,15 @@ if __name__ == "__main__":
 
         if debug:
             # In reload mode, pass as import string format
-            uvicorn.run("main:app", host=host, port=port, reload=True)
+            # Exclude _mcp_server.py to prevent infinite reload loop
+            # (MCPLoader generates this file on startup)
+            uvicorn.run(
+                "main:app",
+                host=host,
+                port=port,
+                reload=True,
+                reload_excludes=["*/_mcp_server.py", "_mcp_server.py"]
+            )
         else:
             # In normal mode, pass app object directly
             uvicorn.run(app, host=host, port=port, reload=False)

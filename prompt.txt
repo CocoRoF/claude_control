@@ -1,0 +1,20 @@
+Execute these tasks autonomously without asking questions:
+
+1. git clone https://github.com/CocoRoF/claude_control.git
+2. cd claude_control
+3. Analyze the codebase thoroughly
+
+4. IMPLEMENT these features:
+   A) Session Logging System: Create logging for each session with log files, timestamps, command/response logging
+   B) Central Command System: Create orchestration system for controlling multiple sessions, batch commands
+   C) Web UI Dashboard: Create web interface using FastAPI static files with HTML/CSS/JS showing session list, status, command input, log viewer
+
+5. Create update.md file in KOREAN describing all changes in detail
+
+6. git checkout -b feature/ui-dashboard-enhancement
+7. git add -A
+8. git commit -m "feat: Add session logging, central command, web UI"
+9. git push -u origin feature/ui-dashboard-enhancement
+10. gh pr create --title "UI Dashboard Enhancement" --body "Added logging, central command system, and web UI dashboard. See update.md for Korean details."
+
+Work autonomously. Make decisions. Report progress.
