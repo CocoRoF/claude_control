@@ -3,28 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Control Dashboard</title>
+    <title>Claude Control</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="app-container">
         <!-- Header -->
         <header class="header">
             <div class="header-left">
-                <h1 class="logo">
-                    <span class="logo-icon">🤖</span>
-                    Claude Control
-                </h1>
-                <span class="version">v1.0.0</span>
+                <h1 class="logo">Claude Control</h1>
             </div>
             <div class="header-right">
                 <div class="health-indicator" id="health-indicator">
                     <span class="health-dot"></span>
                     <span class="health-text">Connecting...</span>
                 </div>
-                <button class="btn btn-icon" onclick="refreshAll()" title="Refresh All">
-                    🔄
-                </button>
             </div>
         </header>
 
@@ -34,9 +30,7 @@
             <aside class="sidebar">
                 <div class="sidebar-header">
                     <h2>Sessions</h2>
-                    <button class="btn btn-primary btn-sm" onclick="showCreateSessionModal()">
-                        + New
-                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="showCreateSessionModal()">New Session</button>
                 </div>
                 <div class="session-stats" id="session-stats">
                     <div class="stat-item">
@@ -61,15 +55,9 @@
             <section class="main-panel">
                 <!-- Tab Navigation -->
                 <div class="tab-navigation">
-                    <button class="tab-btn active" data-tab="command" onclick="switchTab('command')">
-                        💬 Command
-                    </button>
-                    <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">
-                        📋 Logs
-                    </button>
-                    <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">
-                        📦 Batch
-                    </button>
+                    <button class="tab-btn active" data-tab="command" onclick="switchTab('command')">Command</button>
+                    <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">Logs</button>
+                    <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">Batch</button>
                 </div>
 
                 <!-- Tab Content -->
@@ -78,7 +66,6 @@
                     <div class="tab-pane active" id="command-tab">
                         <div class="no-session-selected" id="no-session-message">
                             <div class="empty-state">
-                                <span class="empty-icon">👈</span>
                                 <h3>Select a Session</h3>
                                 <p>Choose a session from the list to execute commands</p>
                             </div>
@@ -108,12 +95,8 @@
                                     </label>
                                 </div>
                                 <div class="command-actions">
-                                    <button class="btn btn-primary" onclick="executeCommand()">
-                                        ▶️ Execute
-                                    </button>
-                                    <button class="btn btn-secondary" onclick="clearOutput()">
-                                        Clear
-                                    </button>
+                                    <button class="btn btn-primary" onclick="executeCommand()">Execute</button>
+                                    <button class="btn btn-secondary" onclick="clearOutput()">Clear</button>
                                 </div>
                             </div>
                             <div class="command-output-area">
@@ -144,14 +127,11 @@
                                         <option value="COMMAND">COMMAND</option>
                                         <option value="RESPONSE">RESPONSE</option>
                                     </select>
-                                    <button class="btn btn-sm" onclick="loadSessionLogs()">
-                                        🔄 Refresh
-                                    </button>
+                                    <button class="btn btn-sm" onclick="loadSessionLogs()">Refresh</button>
                                 </div>
                             </div>
                             <div class="logs-content" id="logs-content">
                                 <div class="empty-state">
-                                    <span class="empty-icon">📋</span>
                                     <p>Select a session to view logs</p>
                                 </div>
                             </div>
@@ -190,9 +170,7 @@
                                         <input type="number" id="batch-timeout" value="600" min="1" max="3600">
                                     </label>
                                 </div>
-                                <button class="btn btn-primary" onclick="executeBatchCommand()">
-                                    📦 Execute Batch
-                                </button>
+                                <button class="btn btn-primary" onclick="executeBatchCommand()">Execute Batch</button>
                             </div>
                             <div class="batch-results" id="batch-results">
                                 <!-- Batch results will be displayed here -->

@@ -17,6 +17,7 @@ from service.claude_manager.models import (
     StorageFileContent
 )
 from service.claude_manager.session_manager import SessionManager, get_session_manager
+from service.logging.session_logger import get_session_logger
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,19 @@ async def execute_prompt(
             detail=f"Session is not running (status: {process.status})"
         )
 
+    # Get session logger
+    session_logger = get_session_logger(session_id, create_if_missing=False)
+
     try:
+        # Log the command
+        if session_logger:
+            session_logger.log_command(
+                prompt=request.prompt,
+                timeout=request.timeout,
+                system_prompt=request.system_prompt,
+                max_turns=request.max_turns
+            )
+
         result = await process.execute(
             prompt=request.prompt,
             timeout=request.timeout or 600.0,
@@ -117,6 +130,16 @@ async def execute_prompt(
             system_prompt=request.system_prompt,
             max_turns=request.max_turns
         )
+
+        # Log the response
+        if session_logger:
+            session_logger.log_response(
+                success=result.get("success", False),
+                output=result.get("output"),
+                error=result.get("error"),
+                duration_ms=result.get("duration_ms"),
+                cost_usd=result.get("cost_usd")
+            )
 
         return ExecuteResponse(
             success=result.get("success", False),
@@ -128,6 +151,8 @@ async def execute_prompt(
         )
     except Exception as e:
         logger.error(f"❌ Execution failed: {e}", exc_info=True)
+        if session_logger:
+            session_logger.error(f"Execution failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

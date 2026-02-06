@@ -18,6 +18,8 @@ from service.logging.session_logger import (
     get_session_logger,
     list_session_logs,
     remove_session_logger,
+    read_logs_from_file,
+    get_log_file_path,
     LogLevel
 )
 
@@ -360,15 +362,9 @@ async def get_session_logs(
     """
     Get log entries for a specific session.
 
+    Reads logs from persistent log files. Logs are preserved even after session deletion.
     Supports filtering by log level.
     """
-    session_logger = get_session_logger(session_id, create_if_missing=False)
-
-    if not session_logger:
-        # Try to read from file if session logger doesn't exist
-        logs_dir = logger  # Use default logs directory
-        raise HTTPException(status_code=404, detail=f"No logs found for session: {session_id}")
-
     # Parse level filter
     level_filter = None
     if level:
@@ -377,11 +373,24 @@ async def get_session_logs(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid log level: {level}")
 
-    entries = session_logger.get_logs(limit=limit, level=level_filter)
+    # First check if log file exists
+    log_file_path = get_log_file_path(session_id)
+    
+    if not log_file_path:
+        raise HTTPException(status_code=404, detail=f"No logs found for session: {session_id}")
+
+    # Try to get from active session logger first (faster, uses cache)
+    session_logger = get_session_logger(session_id, create_if_missing=False)
+    
+    if session_logger:
+        entries = session_logger.get_logs(limit=limit, level=level_filter)
+    else:
+        # Read directly from file (for historical/deleted sessions)
+        entries = read_logs_from_file(session_id, limit=limit, level=level_filter)
 
     return SessionLogsResponse(
         session_id=session_id,
-        log_file=session_logger.get_log_file_path(),
+        log_file=log_file_path,
         entries=[SessionLogEntry(**e) for e in entries],
         total_entries=len(entries)
     )

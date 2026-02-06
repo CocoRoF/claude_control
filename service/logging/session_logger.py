@@ -376,16 +376,32 @@ def get_session_logger(
         return None
 
 
-def remove_session_logger(session_id: str):
+def remove_session_logger(session_id: str, delete_file: bool = False):
     """
-    Remove and close a session logger.
+    Remove session logger from memory.
+
+    By default, log files are preserved for historical reference.
+    Only removes from memory registry, not from disk.
 
     Args:
         session_id: Session ID
+        delete_file: If True, also delete the log file (default: False)
     """
     with _registry_lock:
         if session_id in _session_loggers:
-            _session_loggers[session_id].close()
+            session_logger = _session_loggers[session_id]
+            session_logger.close()
+            
+            # Optionally delete the file (default: keep it)
+            if delete_file:
+                try:
+                    log_path = Path(session_logger.get_log_file_path())
+                    if log_path.exists():
+                        log_path.unlink()
+                        logger.info(f"Deleted log file: {log_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete log file: {e}")
+            
             del _session_loggers[session_id]
 
 
@@ -414,3 +430,93 @@ def list_session_logs() -> List[Dict[str, Any]]:
     # Sort by modification time (newest first)
     log_files.sort(key=lambda x: x["modified_at"], reverse=True)
     return log_files
+
+
+def read_logs_from_file(
+    session_id: str,
+    limit: int = 100,
+    level: Optional[LogLevel] = None
+) -> List[Dict[str, Any]]:
+    """
+    Read log entries directly from a log file.
+
+    This function reads logs from disk without requiring an active session logger.
+    Useful for reading historical logs from deleted sessions.
+
+    Args:
+        session_id: Session ID (used to find the log file)
+        limit: Maximum number of entries to return
+        level: Filter by log level
+
+    Returns:
+        List of log entries as dictionaries
+    """
+    logs_dir = Path(__file__).parent.parent.parent / "logs"
+    log_file = logs_dir / f"{session_id}.log"
+
+    if not log_file.exists():
+        return []
+
+    entries = []
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        for line in lines:
+            if line.startswith('[') and '] [' in line:
+                try:
+                    # Parse log line
+                    # Format: [timestamp] [LEVEL   ] message | metadata
+                    parts = line.split('] [', 1)
+                    if len(parts) >= 2:
+                        ts_str = parts[0][1:]
+                        rest = parts[1]
+                        level_end = rest.find(']')
+                        if level_end > 0:
+                            log_level = rest[:level_end].strip()
+
+                            # Check level filter
+                            if level and log_level != level.value:
+                                continue
+
+                            message_part = rest[level_end + 2:].strip()
+
+                            # Parse metadata if present
+                            metadata = {}
+                            if ' | ' in message_part:
+                                msg, meta_str = message_part.rsplit(' | ', 1)
+                                try:
+                                    metadata = json.loads(meta_str)
+                                except json.JSONDecodeError:
+                                    pass
+                            else:
+                                msg = message_part.rstrip('\n')
+
+                            entries.append({
+                                "timestamp": ts_str,
+                                "level": log_level,
+                                "message": msg,
+                                "metadata": metadata
+                            })
+                except Exception:
+                    continue
+
+        return entries[-limit:]
+    except Exception as e:
+        logger.error(f"Failed to read logs from file {log_file}: {e}")
+        return []
+
+
+def get_log_file_path(session_id: str) -> Optional[str]:
+    """
+    Get the log file path for a session.
+
+    Args:
+        session_id: Session ID
+
+    Returns:
+        Path to log file if exists, None otherwise
+    """
+    logs_dir = Path(__file__).parent.parent.parent / "logs"
+    log_file = logs_dir / f"{session_id}.log"
+    return str(log_file) if log_file.exists() else None

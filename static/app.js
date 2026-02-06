@@ -57,7 +57,6 @@ function renderSessionList() {
     if (state.sessions.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <span class="empty-icon">📭</span>
                 <p>No sessions yet</p>
             </div>
         `;
@@ -74,7 +73,7 @@ function renderSessionList() {
             </div>
             <div class="session-actions">
                 <button class="btn btn-icon btn-sm" onclick="event.stopPropagation(); showDeleteConfirmation('${session.session_id}', '${session.session_name || session.session_id}')" title="Delete">
-                    🗑️
+                    ✕
                 </button>
             </div>
         </div>
@@ -256,7 +255,6 @@ async function loadSessionLogs() {
     if (!sessionId) {
         container.innerHTML = `
             <div class="empty-state">
-                <span class="empty-icon">📋</span>
                 <p>Select a session to view logs</p>
             </div>
         `;
@@ -274,7 +272,6 @@ async function loadSessionLogs() {
         if (result.entries.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
-                    <span class="empty-icon">📭</span>
                     <p>No logs found</p>
                 </div>
             `;
@@ -294,7 +291,6 @@ async function loadSessionLogs() {
     } catch (error) {
         container.innerHTML = `
             <div class="empty-state">
-                <span class="empty-icon">⚠️</span>
                 <p>Failed to load logs: ${error.message}</p>
             </div>
         `;
@@ -371,7 +367,6 @@ async function executeBatchCommand() {
     } catch (error) {
         resultsContainer.innerHTML = `
             <div class="empty-state">
-                <span class="empty-icon">⚠️</span>
                 <p>Batch execution failed: ${error.message}</p>
             </div>
         `;
@@ -382,7 +377,7 @@ function renderBatchResults(result) {
     const container = document.getElementById('batch-results');
 
     const summary = `
-        <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+        <div class="batch-summary">
             <strong>Summary:</strong> ${result.successful}/${result.total_sessions} successful
             | Total time: ${result.total_duration_ms}ms
         </div>
@@ -392,12 +387,12 @@ function renderBatchResults(result) {
         <div class="batch-result-item ${r.success ? 'success' : 'failed'}">
             <div class="batch-result-header">
                 <strong>${getSessionName(r.session_id)}</strong>
-                <span>${r.success ? '✅ Success' : '❌ Failed'}</span>
+                <span class="result-badge ${r.success ? 'success' : 'failed'}">${r.success ? 'Success' : 'Failed'}</span>
             </div>
             <div class="batch-result-output">
                 ${escapeHtml(r.success ? (r.output || 'No output') : (r.error || 'Unknown error'))}
             </div>
-            ${r.duration_ms ? `<small class="text-muted">Duration: ${r.duration_ms}ms</small>` : ''}
+            ${r.duration_ms ? `<small class="text-muted">Duration: ${r.duration_ms}ms</small>` : ''}}
         </div>
     `).join('');
 

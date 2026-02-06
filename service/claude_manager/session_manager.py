@@ -17,6 +17,7 @@ from service.claude_manager.models import (
 )
 from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import get_pod_info
+from service.logging.session_logger import get_session_logger, remove_session_logger
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,16 @@ class SessionManager:
         # Save session metadata to Redis
         self._save_session_to_redis(session_id, session_info)
 
+        # Create session logger
+        session_logger = get_session_logger(session_id, request.session_name, create_if_missing=True)
+        if session_logger:
+            session_logger.log_session_event("created", {
+                "model": request.model,
+                "working_dir": request.working_dir,
+                "max_turns": request.max_turns
+            })
+            logger.info(f"[{session_id}] 📝 Session logger created")
+
         logger.info(f"[{session_id}] ✅ Session created successfully")
         return session_info
 
@@ -240,12 +251,20 @@ class SessionManager:
         if process:
             logger.info(f"[{session_id}] Deleting session...")
 
+            # Log session end event
+            session_logger = get_session_logger(session_id, create_if_missing=False)
+            if session_logger:
+                session_logger.log_session_event("deleted")
+
             # Stop process
             await process.stop()
 
             # Cleanup storage
             if cleanup_storage:
                 await process.cleanup_storage()
+
+            # Remove session logger
+            remove_session_logger(session_id)
 
             # Remove from local
             del self._local_processes[session_id]

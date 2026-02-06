@@ -11,9 +11,10 @@ import os
 import platform
 import signal
 import shutil
+import sys
 import tempfile
 from pathlib import Path
-from typing import Optional, Dict, List, Any, TYPE_CHECKING
+from typing import Optional, Dict, List, Any, Tuple, TYPE_CHECKING
 from datetime import datetime
 
 from service.claude_manager.models import SessionStatus, MCPConfig
@@ -30,6 +31,11 @@ STDIO_BUFFER_LIMIT = 16 * 1024 * 1024
 # Claude execution timeout (default 5 minutes)
 CLAUDE_DEFAULT_TIMEOUT = 300.0
 
+# Platform detection
+IS_WINDOWS = platform.system() == 'Windows'
+IS_MACOS = platform.system() == 'Darwin'
+IS_LINUX = platform.system() == 'Linux'
+
 # Default storage root path (cross-platform)
 def _get_default_storage_root() -> str:
     """Get platform-appropriate default storage root."""
@@ -38,12 +44,20 @@ def _get_default_storage_root() -> str:
         return env_storage
 
     # Use platform-appropriate temp directory
-    if platform.system() == 'Windows':
+    if IS_WINDOWS:
         # On Windows, use LOCALAPPDATA or TEMP
         base = os.environ.get('LOCALAPPDATA') or tempfile.gettempdir()
         return str(Path(base) / 'claude_sessions')
+    elif IS_MACOS:
+        # On macOS, use ~/Library/Application Support or /tmp
+        app_support = Path.home() / 'Library' / 'Application Support' / 'claude_sessions'
+        try:
+            app_support.mkdir(parents=True, exist_ok=True)
+            return str(app_support)
+        except (PermissionError, OSError):
+            return '/tmp/claude_sessions'
     else:
-        # On Unix-like systems, use /tmp
+        # On Linux and other Unix-like systems, use /tmp
         return '/tmp/claude_sessions'
 
 DEFAULT_STORAGE_ROOT = _get_default_storage_root()
@@ -120,25 +134,250 @@ def find_claude_executable() -> Optional[str]:
     """
     Find the Claude CLI executable path (cross-platform).
 
-    On Windows, searches for 'claude.cmd' or 'claude.exe' in addition to 'claude'.
-    On Unix-like systems, searches for 'claude'.
+    Search order:
+    1. 'claude' in PATH (works on all platforms)
+    2. Windows-specific: 'claude.cmd', 'claude.exe', 'claude.bat' in PATH
+    3. Windows-specific: Common npm global installation paths
 
     Returns:
         Full path to Claude CLI executable, or None if not found.
     """
-    # Try the basic 'claude' command first
-    claude_path = shutil.which("claude")
-    if claude_path:
-        return claude_path
-
-    # On Windows, try additional extensions
-    if platform.system() == 'Windows':
-        for ext in ['.cmd', '.exe', '.bat']:
+    if IS_WINDOWS:
+        # On Windows, prioritize finding .cmd/.bat files explicitly
+        # because shutil.which may return path without extension
+        
+        # First, check for explicit .cmd (most common for npm global installs)
+        for ext in ['.cmd', '.bat', '.exe']:
             claude_path = shutil.which(f"claude{ext}")
             if claude_path:
+                logger.debug(f"Found claude via which('claude{ext}'): {claude_path}")
                 return claude_path
 
+        # Check common npm global installation paths on Windows
+        npm_paths = []
+
+        # APPDATA/npm (most common for npm global installs)
+        appdata = os.environ.get('APPDATA')
+        if appdata:
+            npm_paths.append(Path(appdata) / 'npm' / 'claude.cmd')
+            npm_paths.append(Path(appdata) / 'npm' / 'claude.exe')
+
+        # User home directory fallback
+        npm_paths.append(Path.home() / 'AppData' / 'Roaming' / 'npm' / 'claude.cmd')
+        npm_paths.append(Path.home() / 'AppData' / 'Roaming' / 'npm' / 'claude.exe')
+
+        for npm_path in npm_paths:
+            if npm_path.exists():
+                logger.debug(f"Found claude at npm path: {npm_path}")
+                return str(npm_path)
+
+        # Finally try without extension (shutil.which will search PATHEXT)
+        claude_path = shutil.which("claude")
+        if claude_path:
+            logger.debug(f"Found claude via which('claude'): {claude_path}")
+            return claude_path
+
+    else:
+        # On Unix-like systems, try the basic 'claude' command first
+        claude_path = shutil.which("claude")
+        if claude_path:
+            logger.debug(f"Found claude via which('claude'): {claude_path}")
+            return claude_path
+
+        # Also check common paths on Unix
+        unix_paths = [
+            Path.home() / '.npm-global' / 'bin' / 'claude',
+            Path('/usr/local/bin/claude'),
+            Path('/usr/bin/claude'),
+        ]
+        for unix_path in unix_paths:
+            if unix_path.exists() and unix_path.is_file():
+                logger.debug(f"Found claude at: {unix_path}")
+                return str(unix_path)
+
+    logger.warning("Claude CLI executable not found in any known location")
     return None
+
+
+def _build_shell_command(executable: str, args: List[str]) -> Tuple[str, List[str], bool]:
+    """
+    Build the appropriate shell command based on platform and executable type.
+
+    Args:
+        executable: The executable path or name.
+        args: Additional arguments.
+
+    Returns:
+        Tuple of (shell_executable, full_args, use_shell)
+        - shell_executable: The actual executable to run
+        - full_args: Complete list of arguments including the executable
+        - use_shell: Whether to use shell=True (generally avoided)
+    """
+    if IS_WINDOWS:
+        # Normalize path separators for Windows
+        executable = executable.replace('/', '\\')
+        ext = Path(executable).suffix.lower()
+
+        # If no extension, check if a .cmd or .bat version exists
+        # This handles cases where shutil.which returns path without extension
+        if not ext or ext not in ('.cmd', '.bat', '.exe', '.ps1'):
+            # Check if this is actually a .cmd file (common for npm)
+            cmd_path = executable + '.cmd'
+            bat_path = executable + '.bat'
+            
+            if Path(cmd_path).exists():
+                logger.debug(f"Detected {executable} is actually {cmd_path}")
+                executable = cmd_path
+                ext = '.cmd'
+            elif Path(bat_path).exists():
+                logger.debug(f"Detected {executable} is actually {bat_path}")
+                executable = bat_path
+                ext = '.bat'
+            else:
+                # Check if the file itself is a script by reading first line
+                try:
+                    if Path(executable).exists():
+                        with open(executable, 'rb') as f:
+                            first_bytes = f.read(256)
+                            # Check for batch file signatures
+                            if first_bytes.startswith(b'@') or b'\r\n@' in first_bytes:
+                                logger.debug(f"Detected {executable} is a batch script by content")
+                                ext = '.cmd'  # Treat as batch file
+                except (IOError, OSError):
+                    pass
+
+        if ext in ('.cmd', '.bat'):
+            # Batch files must be run via cmd.exe /c
+            # This is a Windows requirement, not a choice
+            full_args = ['cmd.exe', '/c', executable] + args
+            logger.debug(f"Using cmd.exe wrapper for batch file: {executable}")
+            return ('cmd.exe', full_args, False)
+        elif ext == '.ps1':
+            # PowerShell scripts
+            full_args = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', executable] + args
+            return ('powershell.exe', full_args, False)
+        elif ext == '.exe':
+            # Native executables
+            full_args = [executable] + args
+            return (executable, full_args, False)
+        else:
+            # Unknown extension on Windows - try via cmd.exe to be safe
+            # This handles edge cases where npm installs scripts without proper extension
+            logger.debug(f"Unknown extension '{ext}' on Windows, using cmd.exe wrapper for: {executable}")
+            full_args = ['cmd.exe', '/c', executable] + args
+            return ('cmd.exe', full_args, False)
+    else:
+        # Unix-like systems: direct execution
+        full_args = [executable] + args
+        return (executable, full_args, False)
+
+
+async def create_subprocess_cross_platform(
+    cmd: List[str],
+    stdin: Optional[int] = None,
+    stdout: Optional[int] = None,
+    stderr: Optional[int] = None,
+    env: Optional[Dict[str, str]] = None,
+    cwd: Optional[str] = None,
+    limit: int = STDIO_BUFFER_LIMIT
+) -> asyncio.subprocess.Process:
+    """
+    Create a subprocess in a cross-platform compatible way.
+
+    This function handles the following platform-specific issues:
+    - Windows: .cmd/.bat files cannot be executed directly by CreateProcess
+    - Windows: Need to properly escape/quote arguments
+    - Windows: Prevent console window popups for background processes
+    - Unix: Standard subprocess execution
+
+    Args:
+        cmd: Command and arguments as a list. First element is the executable.
+        stdin: stdin handling (e.g., asyncio.subprocess.PIPE or None)
+        stdout: stdout handling
+        stderr: stderr handling
+        env: Environment variables dictionary
+        cwd: Working directory path
+        limit: Buffer limit for stdio pipes
+
+    Returns:
+        The created asyncio subprocess.
+
+    Raises:
+        OSError: If the subprocess cannot be created.
+    """
+    if not cmd:
+        raise ValueError("Command list cannot be empty")
+
+    executable = cmd[0]
+    args = cmd[1:]
+
+    # Build platform-appropriate command
+    shell_exec, full_cmd, use_shell = _build_shell_command(executable, args)
+
+    logger.debug(f"Platform: {platform.system()}, Original: {executable}, Final cmd: {full_cmd[:4]}...")
+
+    try:
+        if IS_WINDOWS:
+            # Windows-specific subprocess creation
+            # We use subprocess.Popen kwargs that are passed through
+            import subprocess as sp
+
+            # Prepare Windows-specific kwargs
+            # Note: asyncio.create_subprocess_exec passes kwargs to subprocess.Popen
+            kwargs = {
+                'stdin': stdin,
+                'stdout': stdout,
+                'stderr': stderr,
+                'env': env,
+                'cwd': cwd,
+                'limit': limit,
+            }
+
+            # CREATE_NO_WINDOW (0x08000000) prevents console window popup
+            # This is crucial for running as a service or background process
+            kwargs['creationflags'] = sp.CREATE_NO_WINDOW
+
+            # STARTUPINFO to hide window
+            startupinfo = sp.STARTUPINFO()
+            startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = sp.SW_HIDE
+            kwargs['startupinfo'] = startupinfo
+
+            process = await asyncio.create_subprocess_exec(
+                *full_cmd,
+                **kwargs
+            )
+        else:
+            # Unix-like systems: straightforward execution
+            process = await asyncio.create_subprocess_exec(
+                *full_cmd,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+                env=env,
+                cwd=cwd,
+                limit=limit
+            )
+
+        logger.debug(f"Subprocess created with PID: {process.pid}")
+        return process
+
+    except FileNotFoundError as e:
+        logger.error(f"Executable not found: {shell_exec} (full cmd: {full_cmd[:2]})")
+        raise
+    except PermissionError as e:
+        logger.error(f"Permission denied executing: {shell_exec}")
+        raise
+    except OSError as e:
+        # WinError 193 = "%1 is not a valid Win32 application"
+        # This happens when trying to run a batch file directly
+        if IS_WINDOWS and e.winerror == 193:
+            logger.error(
+                f"OSError 193: Cannot execute {executable} directly. "
+                f"This is typically a batch script that needs cmd.exe wrapper. "
+                f"Full command was: {full_cmd}"
+            )
+        raise
 
 
 class ClaudeProcess:
@@ -229,14 +468,16 @@ class ClaudeProcess:
             claude_path = find_claude_executable()
             if claude_path is None:
                 raise FileNotFoundError(
-                    "Claude Code is not installed. "
+                    "Claude Code CLI not found. "
                     "Install it with: 'npm install -g @anthropic-ai/claude-code'"
                 )
 
             # Store Claude CLI path for use in execute()
             self._claude_path = claude_path
 
+            # Log the found path with platform info
             logger.info(f"[{self.session_id}] Found claude CLI at: {claude_path}")
+            logger.info(f"[{self.session_id}] Platform: {platform.system()} ({platform.machine()})")
 
             self.status = SessionStatus.RUNNING
             logger.info(f"[{self.session_id}] ✅ Session initialized successfully")
@@ -337,16 +578,18 @@ class ClaudeProcess:
                     logger.info(f"[{self.session_id}] 📝 Custom system prompt applied")
 
                 # Add the prompt - use stdin for long prompts to avoid command line length limits
-                use_stdin = len(prompt) > 1000
+                # Windows has stricter command line length limits (~8191 chars)
+                max_cmd_length = 2000 if IS_WINDOWS else 8000
+                use_stdin = len(prompt) > max_cmd_length
                 if not use_stdin:
                     cmd.extend(["-p", prompt])
 
                 logger.info(f"[{self.session_id}] Executing: {' '.join(cmd[:5])}...")  # Log partial for security
                 logger.info(f"[{self.session_id}] Prompt length: {len(prompt)} chars, use_stdin: {use_stdin}")
 
-                # Execute process
-                self._current_process = await asyncio.create_subprocess_exec(
-                    *cmd,
+                # Execute process using cross-platform helper
+                self._current_process = await create_subprocess_cross_platform(
+                    cmd,
                     stdin=asyncio.subprocess.PIPE if use_stdin else None,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -406,11 +649,30 @@ class ClaudeProcess:
                 self._current_process = None
 
     async def _kill_current_process(self):
-        """Forcefully terminate the currently running process."""
+        """Forcefully terminate the currently running process (cross-platform)."""
         if self._current_process:
             try:
-                self._current_process.kill()
-                await self._current_process.wait()
+                if IS_WINDOWS:
+                    # On Windows, use terminate() first, then kill() if needed
+                    # kill() on Windows is equivalent to terminate()
+                    self._current_process.terminate()
+                    try:
+                        await asyncio.wait_for(self._current_process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        # Force kill if graceful termination fails
+                        self._current_process.kill()
+                        await self._current_process.wait()
+                else:
+                    # On Unix, try SIGTERM first, then SIGKILL
+                    try:
+                        self._current_process.terminate()
+                        await asyncio.wait_for(self._current_process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        self._current_process.kill()
+                        await self._current_process.wait()
+            except ProcessLookupError:
+                # Process already terminated
+                logger.debug(f"[{self.session_id}] Process already terminated")
             except Exception as e:
                 logger.warning(f"[{self.session_id}] Failed to kill process: {e}")
 
