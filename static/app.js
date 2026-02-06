@@ -8,8 +8,31 @@ const state = {
     selectedSessionId: null,
     isLoading: false,
     healthStatus: 'connecting',
-    sidebarCollapsed: false
+    sidebarCollapsed: false,
+    // Session-specific data cache
+    sessionData: {} // { sessionId: { input: '', output: '', status: '', statusText: '' } }
 };
+
+// Get or initialize session data
+function getSessionData(sessionId) {
+    if (!state.sessionData[sessionId]) {
+        state.sessionData[sessionId] = {
+            input: '',
+            output: 'No output yet',
+            status: '',
+            statusText: ''
+        };
+    }
+    return state.sessionData[sessionId];
+}
+
+// Save current session's input to cache
+function saveCurrentSessionInput() {
+    if (state.selectedSessionId) {
+        const data = getSessionData(state.selectedSessionId);
+        data.input = document.getElementById('command-input').value;
+    }
+}
 
 // API base URL
 const API_BASE = '';
@@ -123,6 +146,10 @@ function updateSessionStats() {
 }
 
 function selectSession(sessionId) {
+    // Save current session's input before switching
+    saveCurrentSessionInput();
+
+    // Update selected session
     state.selectedSessionId = sessionId;
     renderSessionList();
 
@@ -147,6 +174,16 @@ function showCommandPanel(session) {
             ${session.pod_name ? `<span>Pod: ${session.pod_name}</span>` : ''}
         </div>
     `;
+
+    // Restore session-specific input and output
+    const sessionData = getSessionData(session.session_id);
+    document.getElementById('command-input').value = sessionData.input;
+    document.getElementById('command-output').textContent = sessionData.output;
+    
+    // Restore execution status
+    const statusEl = document.getElementById('execution-status');
+    statusEl.textContent = sessionData.statusText;
+    statusEl.className = 'execution-status ' + sessionData.status;
 }
 
 function showLogsPanel(session) {
@@ -209,6 +246,9 @@ async function confirmDeleteSession() {
             method: 'DELETE'
         });
 
+        // Clean up session data cache
+        delete state.sessionData[sessionToDelete];
+
         if (state.selectedSessionId === sessionToDelete) {
             state.selectedSessionId = null;
             // Hide command panel
@@ -217,6 +257,8 @@ async function confirmDeleteSession() {
             // Hide logs panel
             document.getElementById('no-session-logs-message').classList.remove('hidden');
             document.getElementById('logs-panel').classList.add('hidden');
+            // Clear input field
+            document.getElementById('command-input').value = '';
         }
 
         hideDeleteSessionModal();
@@ -258,16 +300,38 @@ async function executeCommand() {
             })
         });
 
+        const sessionData = getSessionData(state.selectedSessionId);
+        sessionData.input = prompt;
+
         if (result.success) {
-            setExecutionStatus('success', `Completed in ${result.duration_ms}ms`);
-            document.getElementById('command-output').textContent = result.output || 'No output';
+            const statusText = `Completed in ${result.duration_ms}ms`;
+            setExecutionStatus('success', statusText);
+            const output = result.output || 'No output';
+            document.getElementById('command-output').textContent = output;
+            
+            // Save to session data
+            sessionData.output = output;
+            sessionData.status = 'success';
+            sessionData.statusText = statusText;
         } else {
             setExecutionStatus('error', 'Failed');
-            document.getElementById('command-output').textContent = result.error || 'Unknown error';
+            const output = result.error || 'Unknown error';
+            document.getElementById('command-output').textContent = output;
+            
+            // Save to session data
+            sessionData.output = output;
+            sessionData.status = 'error';
+            sessionData.statusText = 'Failed';
         }
     } catch (error) {
         setExecutionStatus('error', 'Error');
         document.getElementById('command-output').textContent = error.message;
+        
+        // Save to session data
+        const sessionData = getSessionData(state.selectedSessionId);
+        sessionData.output = error.message;
+        sessionData.status = 'error';
+        sessionData.statusText = 'Error';
     }
 }
 
@@ -278,6 +342,12 @@ function setExecutionStatus(status, text) {
 }
 
 function clearOutput() {
+    if (state.selectedSessionId) {
+        const sessionData = getSessionData(state.selectedSessionId);
+        sessionData.output = 'No output yet';
+        sessionData.status = '';
+        sessionData.statusText = '';
+    }
     document.getElementById('command-output').textContent = 'No output yet';
     setExecutionStatus('', '');
 }
