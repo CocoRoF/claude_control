@@ -210,6 +210,7 @@ window.CompanyView = window.CompanyView || {};
 
         _drawWalls() {
             const { WIDTH, HEIGHT } = Layout.ROOM;
+            const wallHeight = 65;
 
             // Back wall (along y=0, going along x-axis)
             const backWall = Assets.createBackWall(WIDTH);
@@ -219,38 +220,47 @@ window.CompanyView = window.CompanyView || {};
             const sideWall = Assets.createSideWall(HEIGHT);
             this.wallLayer.addChild(sideWall);
 
-            // Wall corner cap
+            // Wall corner cap - at the intersection of back and side walls
             const corner = new PIXI.Graphics();
             const cornerPos = ISO.gridToScreen(0, 0);
+            // Corner is at the top corner of tile (0,0)
+            const cornerX = cornerPos.x;
+            const cornerY = cornerPos.y - ISO.TILE_H / 2;
             corner.beginFill(Assets.PALETTE.wall.trim);
-            corner.drawRect(cornerPos.x - ISO.TILE_W / 2 - 1, cornerPos.y - 67, 4, 67);
+            corner.drawRect(cornerX - 2, cornerY - wallHeight, 4, wallHeight);
             corner.endFill();
             this.wallLayer.addChild(corner);
 
             // Exterior wall tops (decorative) - gives 3D depth to walls
             const topCap = new PIXI.Graphics();
             topCap.beginFill(Assets.PALETTE.wall.trim, 0.8);
-            // Back wall top
+            // Back wall top - follows top corners of y=0 tiles
             for (let i = 0; i < WIDTH; i++) {
                 const p1 = ISO.gridToScreen(i, 0);
                 const p2 = ISO.gridToScreen(i + 1, 0);
-                topCap.moveTo(p1.x - ISO.TILE_W / 2, p1.y - 67);
-                topCap.lineTo(p2.x - ISO.TILE_W / 2, p2.y - 67);
-                topCap.lineTo(p2.x - ISO.TILE_W / 2 - 3, p2.y - 70);
-                topCap.lineTo(p1.x - ISO.TILE_W / 2 - 3, p1.y - 70);
+                // Use top corners
+                const x1 = p1.x, y1 = p1.y - ISO.TILE_H / 2;
+                const x2 = p2.x, y2 = p2.y - ISO.TILE_H / 2;
+                topCap.moveTo(x1, y1 - wallHeight);
+                topCap.lineTo(x2, y2 - wallHeight);
+                topCap.lineTo(x2 - 3, y2 - wallHeight - 3);
+                topCap.lineTo(x1 - 3, y1 - wallHeight - 3);
                 topCap.closePath();
             }
             topCap.endFill();
 
-            // Side wall top
+            // Side wall top - follows top corners of x=0 tiles
             topCap.beginFill(Assets.PALETTE.wallPink.trim, 0.8);
             for (let j = 0; j < HEIGHT; j++) {
                 const p1 = ISO.gridToScreen(0, j);
                 const p2 = ISO.gridToScreen(0, j + 1);
-                topCap.moveTo(p1.x + ISO.TILE_W / 2, p1.y - 67);
-                topCap.lineTo(p2.x + ISO.TILE_W / 2, p2.y - 67);
-                topCap.lineTo(p2.x + ISO.TILE_W / 2 + 3, p2.y - 70);
-                topCap.lineTo(p1.x + ISO.TILE_W / 2 + 3, p1.y - 70);
+                // Use top corners
+                const x1 = p1.x, y1 = p1.y - ISO.TILE_H / 2;
+                const x2 = p2.x, y2 = p2.y - ISO.TILE_H / 2;
+                topCap.moveTo(x1, y1 - wallHeight);
+                topCap.lineTo(x2, y2 - wallHeight);
+                topCap.lineTo(x2 + 3, y2 - wallHeight - 3);
+                topCap.lineTo(x1 + 3, y1 - wallHeight - 3);
                 topCap.closePath();
             }
             topCap.endFill();
@@ -265,30 +275,6 @@ window.CompanyView = window.CompanyView || {};
                 switch (item.type) {
                     case 'workstation':
                         sprite = Assets.createWorkstation(item.chairColor, item.variant);
-                        break;
-                    case 'bookshelf':
-                        sprite = Assets.createBookshelf();
-                        break;
-                    case 'plant_large':
-                        sprite = Assets.createPlant('large');
-                        break;
-                    case 'plant_small':
-                        sprite = Assets.createPlant('small');
-                        break;
-                    case 'water_cooler':
-                        sprite = Assets.createWaterCooler();
-                        break;
-                    case 'clock':
-                        sprite = Assets.createClock();
-                        sprite.y = -50; // wall mount offset
-                        break;
-                    case 'window':
-                        sprite = Assets.createWindow();
-                        sprite.y = -35; // wall mount offset
-                        break;
-                    case 'whiteboard':
-                        sprite = Assets.createWhiteboard();
-                        sprite.y = -40; // wall mount offset
                         break;
                     default:
                         continue;

@@ -50,23 +50,9 @@ window.CompanyView = window.CompanyView || {};
             screenGlow: 0x2A5A8C,
             stand: 0x444444,
         },
-        bookshelf: {
-            frame: 0xC9996A,
-            frameDark: 0xBE8C5E,
-            frameRight: 0xB88050,
-            shelf: 0xD4A574,
-        },
         carpet: {
             main: 0xE8B4B8,      // pink carpet
             border: 0xD4949A,
-        },
-        plant: {
-            pot: 0xC4794E,
-            potDark: 0xA8633C,
-            soil: 0x5E3D2B,
-            leaf1: 0x5DAE5D,
-            leaf2: 0x4B9E4B,
-            leaf3: 0x6BBE6B,
         },
         wall: {
             back: 0xFFF5E6,
@@ -83,35 +69,6 @@ window.CompanyView = window.CompanyView || {};
             tile2: 0xEDDCC5,
             tilePink: 0xF8E0E0,
         },
-        waterCooler: {
-            body: 0xE0E8F0,
-            bodyDark: 0xC0D0E0,
-            water: 0x8ECAE6,
-            cap: 0xB0C4DE,
-        },
-        whiteboard: {
-            board: 0xFAFAFA,
-            frame: 0xA0A0A0,
-            frameDark: 0x888888,
-        },
-        clock: {
-            face: 0xFAFAFA,
-            frame: 0xD4A574,
-            hands: 0x333333,
-        },
-        window: {
-            frame: 0xD0D0D0,
-            glass: 0xC5E8F7,
-            sky: 0xA8D8EA,
-            curtain: 0xFFB6C1,
-        },
-        cactus: {
-            body: 0x5DAE5D,
-            bodyDark: 0x4B9E4B,
-            pot: 0xC4794E,
-            potDark: 0xA8633C,
-            flower: 0xFF8FAB,
-        }
     };
 
     // ==================== Asset Generators ====================
@@ -252,361 +209,6 @@ window.CompanyView = window.CompanyView || {};
     }
 
     /**
-     * Create a bookshelf (tall furniture piece)
-     * @returns {PIXI.Graphics}
-     */
-    function createBookshelf() {
-        const g = new PIXI.Graphics();
-        const pal = PALETTE.bookshelf;
-        const W = 40;
-        const H = 20;
-        const depth = 50;
-
-        // Main body
-        Prims.drawBoxOutlined(g, 0, 0, W, H, depth, pal.shelf, pal.frameDark, pal.frameRight);
-
-        // Shelf dividers (horizontal)
-        for (let i = 1; i < 4; i++) {
-            const shelfY = -depth + i * 12;
-            g.beginFill(pal.shelf, 0.7);
-            g.moveTo(0, shelfY - H / 2 + 2);
-            g.lineTo(W / 2 - 2, shelfY + 2);
-            g.lineTo(0, shelfY + H / 2 + 2);
-            g.lineTo(-W / 2 + 2, shelfY + 2);
-            g.closePath();
-            g.endFill();
-        }
-
-        // Books
-        const bookColors = [0xE55B5B, 0x5B7BE5, 0x5BE58B, 0xE5C95B, 0xC55BE5, 0x5BBCE5];
-        for (let shelf = 0; shelf < 3; shelf++) {
-            const baseY = -depth + shelf * 12 + 4;
-            const numBooks = 3 + Math.floor(Math.random() * 3);
-            for (let b = 0; b < numBooks; b++) {
-                const bookColor = bookColors[(shelf * 3 + b) % bookColors.length];
-                const bx = -12 + b * 7;
-                const bookH = 6 + Math.random() * 4;
-                g.beginFill(bookColor);
-                g.drawRect(bx, baseY - bookH, 5, bookH);
-                g.endFill();
-            }
-        }
-
-        // Photo frame on top
-        g.beginFill(0xD4A574);
-        g.drawRect(-5, -depth - 4, 10, 8);
-        g.endFill();
-        g.beginFill(0xE8D4B8);
-        g.drawRect(-3, -depth - 2, 6, 4);
-        g.endFill();
-
-        return g;
-    }
-
-    /**
-     * Create a potted plant
-     * @param {string} type - 'small' or 'large'
-     * @returns {PIXI.Graphics}
-     */
-    function createPlant(type = 'small') {
-        const g = new PIXI.Graphics();
-        const pal = PALETTE.plant;
-
-        if (type === 'large') {
-            // Large floor plant (like in the reference image)
-            // Pot
-            g.beginFill(pal.pot);
-            g.moveTo(-10, 0);
-            g.lineTo(-8, -12);
-            g.lineTo(8, -12);
-            g.lineTo(10, 0);
-            g.closePath();
-            g.endFill();
-            g.beginFill(pal.potDark);
-            g.moveTo(-10, 0);
-            g.lineTo(0, 5);
-            g.lineTo(10, 0);
-            g.lineTo(8, -12);
-            g.lineTo(-8, -12);
-            g.closePath();
-            g.endFill();
-
-            // Soil
-            g.beginFill(pal.soil);
-            g.drawEllipse(0, -12, 8, 3);
-            g.endFill();
-
-            // Leaves (tropical style)
-            const leafPositions = [
-                { x: 0, y: -30, angle: 0, scale: 1.0 },
-                { x: -8, y: -25, angle: -0.5, scale: 0.8 },
-                { x: 8, y: -25, angle: 0.5, scale: 0.8 },
-                { x: -12, y: -20, angle: -0.8, scale: 0.7 },
-                { x: 12, y: -20, angle: 0.8, scale: 0.7 },
-                { x: 0, y: -35, angle: 0, scale: 0.9 },
-                { x: -5, y: -32, angle: -0.3, scale: 0.85 },
-                { x: 5, y: -32, angle: 0.3, scale: 0.85 },
-            ];
-            for (const lp of leafPositions) {
-                const leafColor = [pal.leaf1, pal.leaf2, pal.leaf3][Math.floor(Math.random() * 3)];
-                g.beginFill(leafColor, 0.9);
-                g.drawEllipse(lp.x, lp.y, 7 * lp.scale, 12 * lp.scale);
-                g.endFill();
-                // Leaf vein
-                g.lineStyle(0.5, 0x3D8E3D, 0.3);
-                g.moveTo(lp.x, lp.y - 8 * lp.scale);
-                g.lineTo(lp.x, lp.y + 8 * lp.scale);
-                g.lineStyle(0);
-            }
-        } else {
-            // Small desk plant / cactus
-            const pal2 = PALETTE.cactus;
-            // Small pot
-            g.beginFill(pal2.pot);
-            g.moveTo(-5, 0);
-            g.lineTo(-4, -6);
-            g.lineTo(4, -6);
-            g.lineTo(5, 0);
-            g.closePath();
-            g.endFill();
-            g.beginFill(pal2.potDark);
-            g.drawEllipse(0, 0, 5, 2);
-            g.endFill();
-            g.beginFill(pal2.potDark, 0.5);
-            g.drawEllipse(0, -6, 4, 1.5);
-            g.endFill();
-
-            // Cactus body
-            g.beginFill(pal2.body);
-            g.drawRoundedRect(-3, -16, 6, 10, 3);
-            g.endFill();
-            g.beginFill(pal2.bodyDark);
-            g.drawRoundedRect(-1, -16, 2, 10, 1);
-            g.endFill();
-
-            // Small arms
-            g.beginFill(pal2.body);
-            g.drawRoundedRect(-7, -14, 5, 3, 1.5);
-            g.endFill();
-            g.beginFill(pal2.body);
-            g.drawRoundedRect(2, -12, 5, 3, 1.5);
-            g.endFill();
-
-            // Flower
-            g.beginFill(pal2.flower);
-            g.drawCircle(0, -17, 2.5);
-            g.endFill();
-            g.beginFill(0xFFD700);
-            g.drawCircle(0, -17, 1);
-            g.endFill();
-        }
-
-        return g;
-    }
-
-    /**
-     * Create a water cooler
-     * @returns {PIXI.Graphics}
-     */
-    function createWaterCooler() {
-        const g = new PIXI.Graphics();
-        const pal = PALETTE.waterCooler;
-
-        // Base
-        g.beginFill(pal.bodyDark);
-        g.drawRoundedRect(-8, -2, 16, 6, 2);
-        g.endFill();
-
-        // Body
-        g.beginFill(pal.body);
-        g.drawRoundedRect(-7, -22, 14, 20, 2);
-        g.endFill();
-
-        // Shadow on body
-        g.beginFill(pal.bodyDark, 0.3);
-        g.drawRect(3, -20, 4, 16);
-        g.endFill();
-
-        // Water bottle on top
-        g.beginFill(pal.water, 0.7);
-        g.drawRoundedRect(-5, -36, 10, 14, 4);
-        g.endFill();
-
-        // Water level
-        g.beginFill(pal.water, 0.4);
-        g.drawRect(-4, -28, 8, 5);
-        g.endFill();
-
-        // Cap
-        g.beginFill(pal.cap);
-        g.drawRoundedRect(-4, -37, 8, 3, 1);
-        g.endFill();
-
-        // Tap
-        g.beginFill(0xCC3333);
-        g.drawRect(-9, -14, 3, 3);
-        g.endFill();
-        g.beginFill(0x3366CC);
-        g.drawRect(-9, -10, 3, 3);
-        g.endFill();
-
-        return g;
-    }
-
-    /**
-     * Create a wall clock
-     * @returns {PIXI.Graphics}
-     */
-    function createClock() {
-        const g = new PIXI.Graphics();
-        const pal = PALETTE.clock;
-
-        // Frame
-        g.beginFill(pal.frame);
-        g.drawCircle(0, 0, 10);
-        g.endFill();
-
-        // Face
-        g.beginFill(pal.face);
-        g.drawCircle(0, 0, 8);
-        g.endFill();
-
-        // Hour markers
-        for (let i = 0; i < 12; i++) {
-            const angle = (i * 30 - 90) * Math.PI / 180;
-            const len = i % 3 === 0 ? 2 : 1;
-            g.lineStyle(i % 3 === 0 ? 1.5 : 0.5, pal.hands);
-            g.moveTo(Math.cos(angle) * (6 - len), Math.sin(angle) * (6 - len));
-            g.lineTo(Math.cos(angle) * 6, Math.sin(angle) * 6);
-        }
-
-        // Hour hand
-        g.lineStyle(1.5, pal.hands);
-        g.moveTo(0, 0);
-        g.lineTo(-2, -4);
-
-        // Minute hand
-        g.lineStyle(1, pal.hands);
-        g.moveTo(0, 0);
-        g.lineTo(4, -2);
-
-        // Center dot
-        g.beginFill(0xCC3333);
-        g.drawCircle(0, 0, 1);
-        g.endFill();
-
-        g.lineStyle(0);
-
-        return g;
-    }
-
-    /**
-     * Create a window (wall decoration)
-     * @returns {PIXI.Graphics}
-     */
-    function createWindow() {
-        const g = new PIXI.Graphics();
-        const pal = PALETTE.window;
-
-        // Frame
-        g.beginFill(pal.frame);
-        g.drawRoundedRect(-16, -20, 32, 24, 2);
-        g.endFill();
-
-        // Glass
-        g.beginFill(pal.glass, 0.8);
-        g.drawRect(-14, -18, 13, 20);
-        g.endFill();
-        g.beginFill(pal.glass, 0.8);
-        g.drawRect(1, -18, 13, 20);
-        g.endFill();
-
-        // Sky gradient (simplified)
-        g.beginFill(pal.sky, 0.4);
-        g.drawRect(-14, -18, 28, 8);
-        g.endFill();
-
-        // Light reflection
-        g.beginFill(0xFFFFFF, 0.15);
-        g.drawRect(-12, -16, 4, 12);
-        g.endFill();
-
-        // Curtains
-        g.beginFill(pal.curtain, 0.6);
-        g.drawRect(-18, -20, 5, 26);
-        g.endFill();
-        g.beginFill(pal.curtain, 0.6);
-        g.drawRect(13, -20, 5, 26);
-        g.endFill();
-
-        // Curtain details (folds)
-        g.lineStyle(0.5, pal.curtain, 0.8);
-        g.moveTo(-16, -20);
-        g.lineTo(-16, 6);
-        g.moveTo(-14, -20);
-        g.lineTo(-14, 6);
-        g.moveTo(15, -20);
-        g.lineTo(15, 6);
-        g.moveTo(17, -20);
-        g.lineTo(17, 6);
-        g.lineStyle(0);
-
-        return g;
-    }
-
-    /**
-     * Create a whiteboard
-     * @returns {PIXI.Graphics}
-     */
-    function createWhiteboard() {
-        const g = new PIXI.Graphics();
-        const pal = PALETTE.whiteboard;
-
-        // Frame
-        g.beginFill(pal.frameDark);
-        g.drawRoundedRect(-20, -16, 40, 24, 1);
-        g.endFill();
-
-        // Board
-        g.beginFill(pal.board);
-        g.drawRect(-18, -14, 36, 20);
-        g.endFill();
-
-        // Some "writing" on the board
-        g.lineStyle(1, 0x3366CC, 0.4);
-        g.moveTo(-14, -10);
-        g.lineTo(-2, -10);
-        g.moveTo(-14, -6);
-        g.lineTo(4, -6);
-        g.moveTo(-14, -2);
-        g.lineTo(-4, -2);
-
-        // A simple chart
-        g.lineStyle(1, 0xCC3333, 0.5);
-        g.moveTo(6, 2);
-        g.lineTo(8, -4);
-        g.lineTo(10, -2);
-        g.lineTo(14, -8);
-
-        g.lineStyle(0);
-
-        // Marker tray
-        g.beginFill(pal.frame);
-        g.drawRect(-12, 8, 24, 2);
-        g.endFill();
-
-        // Markers
-        const markerColors = [0xCC3333, 0x3366CC, 0x33AA33];
-        for (let i = 0; i < 3; i++) {
-            g.beginFill(markerColors[i]);
-            g.drawRect(-8 + i * 6, 6, 4, 2);
-            g.endFill();
-        }
-
-        return g;
-    }
-
-    /**
      * Create a desk with monitor setup (combined for a workstation)
      */
     function createWorkstation(chairColor = 'blue', variant = 'wood') {
@@ -669,34 +271,42 @@ window.CompanyView = window.CompanyView || {};
         const pal = PALETTE.wallPink;
         const wallHeight = 65;
 
+        // Back wall follows the top-left edge of y=0 tiles
+        // Use top corners of tiles (center.x, center.y - TILE_H/2)
         for (let i = 0; i < length; i++) {
             const pos = ISO.gridToScreen(i, 0);
             const nextPos = ISO.gridToScreen(i + 1, 0);
 
+            // Top corners of tiles
+            const x1 = pos.x;
+            const y1 = pos.y - ISO.TILE_H / 2;
+            const x2 = nextPos.x;
+            const y2 = nextPos.y - ISO.TILE_H / 2;
+
             // Wall face (left-facing wall along the top)
             g.beginFill(pal.back);
-            g.moveTo(pos.x - ISO.TILE_W / 2, pos.y - wallHeight);
-            g.lineTo(nextPos.x - ISO.TILE_W / 2, nextPos.y - wallHeight);
-            g.lineTo(nextPos.x - ISO.TILE_W / 2, nextPos.y);
-            g.lineTo(pos.x - ISO.TILE_W / 2, pos.y);
+            g.moveTo(x1, y1 - wallHeight);
+            g.lineTo(x2, y2 - wallHeight);
+            g.lineTo(x2, y2);
+            g.lineTo(x1, y1);
             g.closePath();
             g.endFill();
 
             // Wall top trim
             g.beginFill(pal.trim, 0.6);
-            g.moveTo(pos.x - ISO.TILE_W / 2, pos.y - wallHeight);
-            g.lineTo(nextPos.x - ISO.TILE_W / 2, nextPos.y - wallHeight);
-            g.lineTo(nextPos.x - ISO.TILE_W / 2, nextPos.y - wallHeight + 3);
-            g.lineTo(pos.x - ISO.TILE_W / 2, pos.y - wallHeight + 3);
+            g.moveTo(x1, y1 - wallHeight);
+            g.lineTo(x2, y2 - wallHeight);
+            g.lineTo(x2, y2 - wallHeight + 3);
+            g.lineTo(x1, y1 - wallHeight + 3);
             g.closePath();
             g.endFill();
 
             // Baseboard
             g.beginFill(pal.trim, 0.4);
-            g.moveTo(pos.x - ISO.TILE_W / 2, pos.y - 4);
-            g.lineTo(nextPos.x - ISO.TILE_W / 2, nextPos.y - 4);
-            g.lineTo(nextPos.x - ISO.TILE_W / 2, nextPos.y);
-            g.lineTo(pos.x - ISO.TILE_W / 2, pos.y);
+            g.moveTo(x1, y1 - 4);
+            g.lineTo(x2, y2 - 4);
+            g.lineTo(x2, y2);
+            g.lineTo(x1, y1);
             g.closePath();
             g.endFill();
         }
@@ -709,34 +319,42 @@ window.CompanyView = window.CompanyView || {};
         const pal = PALETTE.wall;
         const wallHeight = 65;
 
+        // Side wall follows the top-right edge of x=0 tiles
+        // Use top corners of tiles (center.x, center.y - TILE_H/2)
         for (let j = 0; j < length; j++) {
             const pos = ISO.gridToScreen(0, j);
             const nextPos = ISO.gridToScreen(0, j + 1);
 
+            // Top corners of tiles
+            const x1 = pos.x;
+            const y1 = pos.y - ISO.TILE_H / 2;
+            const x2 = nextPos.x;
+            const y2 = nextPos.y - ISO.TILE_H / 2;
+
             // Wall face (right-facing wall along the left)
             g.beginFill(pal.back);
-            g.moveTo(pos.x + ISO.TILE_W / 2, pos.y - wallHeight);
-            g.lineTo(nextPos.x + ISO.TILE_W / 2, nextPos.y - wallHeight);
-            g.lineTo(nextPos.x + ISO.TILE_W / 2, nextPos.y);
-            g.lineTo(pos.x + ISO.TILE_W / 2, pos.y);
+            g.moveTo(x1, y1 - wallHeight);
+            g.lineTo(x2, y2 - wallHeight);
+            g.lineTo(x2, y2);
+            g.lineTo(x1, y1);
             g.closePath();
             g.endFill();
 
             // Wall trim
             g.beginFill(pal.trim, 0.6);
-            g.moveTo(pos.x + ISO.TILE_W / 2, pos.y - wallHeight);
-            g.lineTo(nextPos.x + ISO.TILE_W / 2, nextPos.y - wallHeight);
-            g.lineTo(nextPos.x + ISO.TILE_W / 2, nextPos.y - wallHeight + 3);
-            g.lineTo(pos.x + ISO.TILE_W / 2, pos.y - wallHeight + 3);
+            g.moveTo(x1, y1 - wallHeight);
+            g.lineTo(x2, y2 - wallHeight);
+            g.lineTo(x2, y2 - wallHeight + 3);
+            g.lineTo(x1, y1 - wallHeight + 3);
             g.closePath();
             g.endFill();
 
             // Baseboard
             g.beginFill(pal.trim, 0.4);
-            g.moveTo(pos.x + ISO.TILE_W / 2, pos.y - 4);
-            g.lineTo(nextPos.x + ISO.TILE_W / 2, nextPos.y - 4);
-            g.lineTo(nextPos.x + ISO.TILE_W / 2, nextPos.y);
-            g.lineTo(pos.x + ISO.TILE_W / 2, pos.y);
+            g.moveTo(x1, y1 - 4);
+            g.lineTo(x2, y2 - 4);
+            g.lineTo(x2, y2);
+            g.lineTo(x1, y1);
             g.closePath();
             g.endFill();
         }
@@ -750,12 +368,6 @@ window.CompanyView = window.CompanyView || {};
         createDesk,
         createMonitor,
         createChair,
-        createBookshelf,
-        createPlant,
-        createWaterCooler,
-        createClock,
-        createWindow,
-        createWhiteboard,
         createWorkstation,
         createFloorTile,
         createCarpetTile,

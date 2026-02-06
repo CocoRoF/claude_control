@@ -40,32 +40,6 @@ window.CompanyView = window.CompanyView || {};
         { type: 'workstation', gridX: 4, gridY: 6, chairColor: 'blue', variant: 'wood' },
         { type: 'workstation', gridX: 6, gridY: 6, chairColor: 'green', variant: 'wood' },
         { type: 'workstation', gridX: 8, gridY: 6, chairColor: 'pink', variant: 'wood' },
-
-        // Bookshelf - back right corner
-        { type: 'bookshelf', gridX: 10, gridY: 1 },
-
-        // Plants
-        { type: 'plant_large', gridX: 10, gridY: 7 },
-        { type: 'plant_small', gridX: 1, gridY: 8 },
-
-        // Water cooler
-        { type: 'water_cooler', gridX: 10, gridY: 4 },
-
-        // Clock on back wall
-        { type: 'clock', gridX: 6, gridY: 0, wallMount: true },
-
-        // Windows on side wall
-        { type: 'window', gridX: 0, gridY: 2, wallMount: 'side' },
-        { type: 'window', gridX: 0, gridY: 5, wallMount: 'side' },
-
-        // Whiteboard on back wall
-        { type: 'whiteboard', gridX: 3, gridY: 0, wallMount: 'back' },
-
-        // Small desk plant (decorating specific desks)
-        { type: 'plant_small', gridX: 8.6, gridY: 6.3, onDesk: true },
-
-        // More decorations
-        { type: 'plant_small', gridX: 10, gridY: 8.5 },
     ];
 
     // ==================== Seat Positions ====================
@@ -92,13 +66,13 @@ window.CompanyView = window.CompanyView || {};
     // ==================== Idle Positions ====================
     // Where avatars go when not seated (lounge/wander spots)
     const IDLE_POSITIONS = [
-        { gridX: 10, gridY: 3.5, label: 'water_cooler' },
-        { gridX: 10, gridY: 5, label: 'plant_area' },
+        { gridX: 10, gridY: 3.5, label: 'corner1' },
+        { gridX: 10, gridY: 5, label: 'corner2' },
         { gridX: 5, gridY: 8, label: 'hallway' },
         { gridX: 3, gridY: 8, label: 'entrance' },
         { gridX: 7, gridY: 8, label: 'lounge' },
-        { gridX: 1, gridY: 3, label: 'window1' },
-        { gridX: 1, gridY: 6, label: 'window2' },
+        { gridX: 1, gridY: 3, label: 'side1' },
+        { gridX: 1, gridY: 6, label: 'side2' },
     ];
 
     // ==================== Walkability Map Generator ====================
@@ -112,7 +86,7 @@ window.CompanyView = window.CompanyView || {};
             }
         }
 
-        // Block furniture tiles (desks/bookshelf)
+        // Block furniture tiles (desks)
         for (const f of FURNITURE) {
             if (f.wallMount || f.onDesk) continue;
             const gx = Math.floor(f.gridX);
@@ -120,14 +94,6 @@ window.CompanyView = window.CompanyView || {};
             if (gx >= 0 && gx < ROOM.WIDTH && gy >= 0 && gy < ROOM.HEIGHT) {
                 // Workstations block their tile
                 if (f.type === 'workstation') {
-                    map[gy][gx] = false;
-                }
-                // Bookshelf
-                if (f.type === 'bookshelf') {
-                    map[gy][gx] = false;
-                }
-                // Water cooler blocks
-                if (f.type === 'water_cooler') {
                     map[gy][gx] = false;
                 }
             }
