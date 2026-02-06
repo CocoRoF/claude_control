@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Claude Control</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/company/company.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PixiJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -62,6 +65,9 @@
             <section class="main-panel">
                 <!-- Tab Navigation -->
                 <div class="tab-navigation">
+                    <button class="tab-btn" data-tab="company" onclick="switchTab('company')">
+                        <span style="margin-right:4px">🏢</span>Company
+                    </button>
                     <button class="tab-btn active" data-tab="command" onclick="switchTab('command')">Command</button>
                     <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">Logs</button>
                     <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">Batch</button>
@@ -69,6 +75,42 @@
 
                 <!-- Tab Content -->
                 <div class="tab-content">
+                    <!-- Company Tab -->
+                    <div class="tab-pane" id="company-tab">
+                        <div class="company-panel" id="company-panel">
+                            <div class="company-toolbar">
+                                <div class="company-toolbar-left">
+                                    <div class="company-title">
+                                        <span class="company-title-icon">🏢</span>
+                                        Company Office
+                                    </div>
+                                    <span class="company-session-count" id="company-session-count">0 workers</span>
+                                </div>
+                                <div class="company-toolbar-right">
+                                    <button class="company-btn" onclick="companyZoomIn()" title="Zoom In">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    </button>
+                                    <button class="company-btn" onclick="companyZoomOut()" title="Zoom Out">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    </button>
+                                    <button class="company-btn" onclick="companyResetView()" title="Reset View">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="company-canvas-container" id="company-canvas">
+                                <div class="company-loading" id="company-loading">
+                                    <div class="company-loading-spinner"></div>
+                                    <div class="company-loading-text">Building office...</div>
+                                </div>
+                            </div>
+                            <div class="company-status-overlay" id="company-status-overlay"></div>
+                            <div class="company-empty-state" id="company-empty-state" style="display:none">
+                                <div class="company-empty-text">Create sessions to see workers in the office!</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Command Tab -->
                     <div class="tab-pane active" id="command-tab">
                         <div class="no-session-selected" id="no-session-message">
@@ -246,6 +288,15 @@
             </div>
         </div>
     </div>
+
+    <!-- Company View Modules (order matters) -->
+    <script src="/static/company/isometric-engine.js"></script>
+    <script src="/static/company/pathfinding.js"></script>
+    <script src="/static/company/office-assets.js"></script>
+    <script src="/static/company/avatars.js"></script>
+    <script src="/static/company/animations.js"></script>
+    <script src="/static/company/office-layout.js"></script>
+    <script src="/static/company/company-scene.js"></script>
 
     <script src="/static/app.js"></script>
 </body>

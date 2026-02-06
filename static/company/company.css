@@ -1,0 +1,246 @@
+/* Company View - Isometric Office Styles */
+
+/* ==================== Company Tab Container ==================== */
+.company-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 50%, #16213e 100%);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    position: relative;
+}
+
+/* ==================== Toolbar ==================== */
+.company-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    z-index: 10;
+    min-height: 44px;
+    flex-shrink: 0;
+}
+
+.company-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.company-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.company-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.company-title-icon {
+    font-size: 1.1rem;
+}
+
+.company-session-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 8px;
+    border-radius: 100px;
+}
+
+/* Toolbar Buttons */
+.company-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-size: 0.85rem;
+    padding: 0;
+}
+
+.company-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.company-btn:active {
+    transform: scale(0.95);
+}
+
+.company-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ==================== Canvas Container ==================== */
+.company-canvas-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.company-canvas-container:active {
+    cursor: grabbing;
+}
+
+.company-canvas-container canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* ==================== Status Overlay ==================== */
+.company-status-overlay {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.company-status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    backdrop-filter: blur(8px);
+}
+
+.company-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.company-status-dot.running {
+    background: var(--success-color);
+    box-shadow: 0 0 6px var(--success-color);
+    animation: pulse-dot 2s infinite;
+}
+
+.company-status-dot.idle {
+    background: var(--text-muted);
+}
+
+.company-status-dot.error {
+    background: var(--error-color);
+    box-shadow: 0 0 6px var(--error-color);
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ==================== Loading State ==================== */
+.company-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: rgba(15, 15, 30, 0.95);
+    z-index: 20;
+}
+
+.company-loading-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.company-loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==================== Empty State ==================== */
+.company-empty-state {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.company-empty-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.5);
+    padding: 6px 16px;
+    border-radius: 100px;
+    backdrop-filter: blur(8px);
+}
+
+/* ==================== Minimap (optional future) ==================== */
+.company-minimap {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 120px;
+    height: 80px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    z-index: 10;
+    overflow: hidden;
+    display: none; /* Hidden by default */
+}
+
+/* ==================== Responsive ==================== */
+@media (max-width: 768px) {
+    .company-toolbar {
+        padding: 6px 10px;
+    }
+
+    .company-title {
+        font-size: 0.8rem;
+    }
+
+    .company-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+
+    .company-session-count {
+        font-size: 0.65rem;
+    }
+}

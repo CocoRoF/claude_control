@@ -42,13 +42,13 @@ const API_BASE = '';
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     state.sidebarCollapsed = !state.sidebarCollapsed;
-    
+
     if (state.sidebarCollapsed) {
         sidebar.classList.add('collapsed');
     } else {
         sidebar.classList.remove('collapsed');
     }
-    
+
     // Save state to localStorage
     localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed);
 }
@@ -56,12 +56,12 @@ function toggleSidebar() {
 function initSidebarState() {
     // Check if we're on mobile
     const isMobile = window.innerWidth <= 768;
-    
+
     if (isMobile) {
         // On mobile, start collapsed by default or restore saved state
         const savedState = localStorage.getItem('sidebarCollapsed');
         state.sidebarCollapsed = savedState === null ? true : savedState === 'true';
-        
+
         const sidebar = document.getElementById('sidebar');
         if (state.sidebarCollapsed) {
             sidebar.classList.add('collapsed');
@@ -101,6 +101,7 @@ async function loadSessions() {
         renderSessionList();
         updateSessionStats();
         updateBatchSessionList();
+        syncCompanySessions();
     } catch (error) {
         showError('Failed to load sessions: ' + error.message);
     }
@@ -179,7 +180,7 @@ function showCommandPanel(session) {
     const sessionData = getSessionData(session.session_id);
     document.getElementById('command-input').value = sessionData.input;
     document.getElementById('command-output').textContent = sessionData.output;
-    
+
     // Restore execution status
     const statusEl = document.getElementById('execution-status');
     statusEl.textContent = sessionData.statusText;
@@ -191,7 +192,7 @@ function showLogsPanel(session) {
     document.getElementById('logs-panel').classList.remove('hidden');
 
     // Update title
-    document.getElementById('logs-session-title').textContent = 
+    document.getElementById('logs-session-title').textContent =
         `Logs: ${session.session_name || session.session_id.substring(0, 8)}`;
 
     // Load logs for selected session
@@ -308,7 +309,7 @@ async function executeCommand() {
             setExecutionStatus('success', statusText);
             const output = result.output || 'No output';
             document.getElementById('command-output').textContent = output;
-            
+
             // Save to session data
             sessionData.output = output;
             sessionData.status = 'success';
@@ -317,7 +318,7 @@ async function executeCommand() {
             setExecutionStatus('error', 'Failed');
             const output = result.error || 'Unknown error';
             document.getElementById('command-output').textContent = output;
-            
+
             // Save to session data
             sessionData.output = output;
             sessionData.status = 'error';
@@ -326,7 +327,7 @@ async function executeCommand() {
     } catch (error) {
         setExecutionStatus('error', 'Error');
         document.getElementById('command-output').textContent = error.message;
-        
+
         // Save to session data
         const sessionData = getSessionData(state.selectedSessionId);
         sessionData.output = error.message;
@@ -551,6 +552,118 @@ function switchTab(tabName) {
     if (tabName === 'logs' && state.selectedSessionId) {
         loadSessionLogs();
     }
+
+    // Initialize or sync company view
+    if (tabName === 'company') {
+        initCompanyView();
+    }
+}
+
+// ========== Company View ==========
+
+let _companyInitialized = false;
+
+function initCompanyView() {
+    if (_companyInitialized) {
+        // Just sync sessions
+        syncCompanySessions();
+        return;
+    }
+
+    const container = document.getElementById('company-canvas');
+    const loading = document.getElementById('company-loading');
+    if (!container) return;
+
+    // Check if PixiJS is loaded
+    if (typeof PIXI === 'undefined') {
+        if (loading) loading.querySelector('.company-loading-text').textContent = 'Loading PixiJS...';
+        console.error('PixiJS not loaded');
+        return;
+    }
+
+    // Wait a frame for the tab to become visible and sized
+    requestAnimationFrame(() => {
+        try {
+            const scene = window.CompanyView.getInstance();
+            scene.mount(container).then(() => {
+                _companyInitialized = true;
+                if (loading) loading.style.display = 'none';
+
+                // Initial session sync
+                syncCompanySessions();
+
+                // Listen for avatar clicks
+                document.addEventListener('company-avatar-click', (e) => {
+                    const sessionId = e.detail.sessionId;
+                    selectSession(sessionId);
+                    switchTab('command');
+                });
+            });
+        } catch (err) {
+            console.error('Failed to init company view:', err);
+            if (loading) {
+                loading.querySelector('.company-loading-text').textContent = 'Failed to initialize';
+            }
+        }
+    });
+}
+
+function syncCompanySessions() {
+    if (!_companyInitialized) return;
+    const scene = window.CompanyView.getInstance();
+    if (scene && scene.isInitialized) {
+        scene.syncSessions(state.sessions);
+
+        // Update UI
+        const countEl = document.getElementById('company-session-count');
+        if (countEl) {
+            countEl.textContent = `${state.sessions.length} worker${state.sessions.length !== 1 ? 's' : ''}`;
+        }
+
+        const emptyState = document.getElementById('company-empty-state');
+        if (emptyState) {
+            emptyState.style.display = state.sessions.length === 0 ? 'block' : 'none';
+        }
+
+        // Update status overlay
+        updateCompanyStatusOverlay();
+    }
+}
+
+function updateCompanyStatusOverlay() {
+    const overlay = document.getElementById('company-status-overlay');
+    if (!overlay) return;
+
+    const running = state.sessions.filter(s => s.status === 'running').length;
+    const idle = state.sessions.filter(s => s.status !== 'running' && s.status !== 'error').length;
+    const errors = state.sessions.filter(s => s.status === 'error').length;
+
+    let html = '';
+    if (running > 0) {
+        html += `<div class="company-status-item"><span class="company-status-dot running"></span>${running} working</div>`;
+    }
+    if (idle > 0) {
+        html += `<div class="company-status-item"><span class="company-status-dot idle"></span>${idle} idle</div>`;
+    }
+    if (errors > 0) {
+        html += `<div class="company-status-item"><span class="company-status-dot error"></span>${errors} error</div>`;
+    }
+    overlay.innerHTML = html;
+}
+
+function companyZoomIn() {
+    const scene = window.CompanyView.getInstance();
+    if (scene) scene.zoomIn();
+}
+
+function companyZoomOut() {
+    const scene = window.CompanyView.getInstance();
+    if (scene) scene.zoomOut();
+}
+
+function companyResetView() {
+    const scene = window.CompanyView.getInstance();
+    if (scene) scene.resetView();
 }
 
 // ========== Modals ==========
@@ -623,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => {
         const isMobile = window.innerWidth <= 768;
         const sidebar = document.getElementById('sidebar');
-        
+
         if (!isMobile) {
             // Reset sidebar state on desktop
             sidebar.classList.remove('collapsed');
