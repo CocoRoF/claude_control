@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Claude Control</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,10 +27,17 @@
         <!-- Main Content -->
         <main class="main-content">
             <!-- Sidebar - Session List -->
-            <aside class="sidebar">
+            <aside class="sidebar" id="sidebar">
                 <div class="sidebar-header">
                     <h2>Sessions</h2>
-                    <button class="btn btn-primary btn-sm" onclick="showCreateSessionModal()">New Session</button>
+                    <div class="sidebar-header-actions">
+                        <button class="btn btn-primary btn-sm" onclick="showCreateSessionModal()">New Session</button>
+                        <button class="btn btn-sm sidebar-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="18 15 12 9 6 15"></polyline>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="session-stats" id="session-stats">
                     <div class="stat-item">
@@ -111,13 +118,16 @@
 
                     <!-- Logs Tab -->
                     <div class="tab-pane" id="logs-tab">
-                        <div class="logs-panel">
+                        <div class="no-session-selected" id="no-session-logs-message">
+                            <div class="empty-state">
+                                <h3>Select a Session</h3>
+                                <p>Choose a session from the list to view logs</p>
+                            </div>
+                        </div>
+                        <div class="logs-panel hidden" id="logs-panel">
                             <div class="logs-header">
-                                <h3>Session Logs</h3>
+                                <h3 id="logs-session-title">Session Logs</h3>
                                 <div class="logs-controls">
-                                    <select id="log-session-select" onchange="loadSessionLogs()">
-                                        <option value="">Select Session</option>
-                                    </select>
                                     <select id="log-level-filter" onchange="loadSessionLogs()">
                                         <option value="">All Levels</option>
                                         <option value="DEBUG">DEBUG</option>
@@ -131,9 +141,7 @@
                                 </div>
                             </div>
                             <div class="logs-content" id="logs-content">
-                                <div class="empty-state">
-                                    <p>Select a session to view logs</p>
-                                </div>
+                                <div class="loading">Loading logs...</div>
                             </div>
                         </div>
                     </div>

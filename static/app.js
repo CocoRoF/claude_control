@@ -7,11 +7,44 @@ const state = {
     sessions: [],
     selectedSessionId: null,
     isLoading: false,
-    healthStatus: 'connecting'
+    healthStatus: 'connecting',
+    sidebarCollapsed: false
 };
 
 // API base URL
 const API_BASE = '';
+
+// ========== Utility Functions ==========
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    
+    if (state.sidebarCollapsed) {
+        sidebar.classList.add('collapsed');
+    } else {
+        sidebar.classList.remove('collapsed');
+    }
+    
+    // Save state to localStorage
+    localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed);
+}
+
+function initSidebarState() {
+    // Check if we're on mobile
+    const isMobile = window.innerWidth <= 768;
+    
+    if (isMobile) {
+        // On mobile, start collapsed by default or restore saved state
+        const savedState = localStorage.getItem('sidebarCollapsed');
+        state.sidebarCollapsed = savedState === null ? true : savedState === 'true';
+        
+        const sidebar = document.getElementById('sidebar');
+        if (state.sidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+        }
+    }
+}
 
 // ========== API Functions ==========
 
@@ -45,7 +78,6 @@ async function loadSessions() {
         renderSessionList();
         updateSessionStats();
         updateBatchSessionList();
-        updateLogSessionSelect();
     } catch (error) {
         showError('Failed to load sessions: ' + error.message);
     }
@@ -97,6 +129,7 @@ function selectSession(sessionId) {
     const session = state.sessions.find(s => s.session_id === sessionId);
     if (session) {
         showCommandPanel(session);
+        showLogsPanel(session);
     }
 }
 
@@ -114,6 +147,18 @@ function showCommandPanel(session) {
             ${session.pod_name ? `<span>Pod: ${session.pod_name}</span>` : ''}
         </div>
     `;
+}
+
+function showLogsPanel(session) {
+    document.getElementById('no-session-logs-message').classList.add('hidden');
+    document.getElementById('logs-panel').classList.remove('hidden');
+
+    // Update title
+    document.getElementById('logs-session-title').textContent = 
+        `Logs: ${session.session_name || session.session_id.substring(0, 8)}`;
+
+    // Load logs for selected session
+    loadSessionLogs();
 }
 
 async function createSession() {
@@ -166,8 +211,12 @@ async function confirmDeleteSession() {
 
         if (state.selectedSessionId === sessionToDelete) {
             state.selectedSessionId = null;
+            // Hide command panel
             document.getElementById('no-session-message').classList.remove('hidden');
             document.getElementById('command-panel').classList.add('hidden');
+            // Hide logs panel
+            document.getElementById('no-session-logs-message').classList.remove('hidden');
+            document.getElementById('logs-panel').classList.add('hidden');
         }
 
         hideDeleteSessionModal();
@@ -235,20 +284,8 @@ function clearOutput() {
 
 // ========== Logs ==========
 
-function updateLogSessionSelect() {
-    const select = document.getElementById('log-session-select');
-    const currentValue = select.value;
-
-    select.innerHTML = '<option value="">Select Session</option>' +
-        state.sessions.map(s => `
-            <option value="${s.session_id}" ${s.session_id === currentValue ? 'selected' : ''}>
-                ${s.session_name || s.session_id.substring(0, 8)}
-            </option>
-        `).join('');
-}
-
 async function loadSessionLogs() {
-    const sessionId = document.getElementById('log-session-select').value;
+    const sessionId = state.selectedSessionId;
     const levelFilter = document.getElementById('log-level-filter').value;
     const container = document.getElementById('logs-content');
 
@@ -260,6 +297,9 @@ async function loadSessionLogs() {
         `;
         return;
     }
+
+    // Show loading
+    container.innerHTML = '<div class="loading">Loading logs...</div>';
 
     try {
         let url = `/api/command/logs/${sessionId}?limit=200`;
@@ -438,7 +478,7 @@ function switchTab(tabName) {
     });
 
     // Refresh data if needed
-    if (tabName === 'logs') {
+    if (tabName === 'logs' && state.selectedSessionId) {
         loadSessionLogs();
     }
 }
@@ -499,12 +539,27 @@ async function refreshAll() {
 // ========== Initialization ==========
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize sidebar state for mobile
+    initSidebarState();
+
     // Initial load
     refreshAll();
 
     // Periodic refresh
     setInterval(checkHealth, 30000); // Health check every 30s
     setInterval(loadSessions, 60000); // Session list every 60s
+
+    // Handle resize events
+    window.addEventListener('resize', () => {
+        const isMobile = window.innerWidth <= 768;
+        const sidebar = document.getElementById('sidebar');
+        
+        if (!isMobile) {
+            // Reset sidebar state on desktop
+            sidebar.classList.remove('collapsed');
+            state.sidebarCollapsed = false;
+        }
+    });
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
