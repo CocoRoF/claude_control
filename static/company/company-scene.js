@@ -199,9 +199,9 @@ window.CompanyView = window.CompanyView || {};
 
             // Carpet area under desks (center area)
             for (let gy = 1; gy < 8; gy++) {
-                for (let gx = 1; gx < WIDTH - 1; gx++) {
+                for (let gx = 1; gx < WIDTH - 2; gx++) {
                     const pos = ISO.gridToScreen(gx, gy);
-                    const carpet = Assets.createCarpetTile(gx - 1, gy - 1, WIDTH - 2, 7);
+                    const carpet = Assets.createCarpetTile(gx - 1, gy - 1, WIDTH - 3, 7);
                     carpet.x = pos.x;
                     carpet.y = pos.y;
                     this.floorLayer.addChild(carpet);
@@ -281,7 +281,19 @@ window.CompanyView = window.CompanyView || {};
         }
 
         _placeFurniture() {
-            // No furniture to place
+            const ConferenceTable = window.CompanyView.ConferenceTable;
+
+            // 가구 배치
+            for (const furniture of Layout.FURNITURE) {
+                if (furniture.type === 'conferenceTable') {
+                    const table = ConferenceTable.createConferenceTable(
+                        furniture.gridX,
+                        furniture.gridY
+                    );
+                    this.objectLayer.addChild(table);
+                }
+            }
+
             this.objectLayer.markDirty();
         }
 

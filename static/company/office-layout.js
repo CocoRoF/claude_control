@@ -22,8 +22,11 @@ window.CompanyView = window.CompanyView || {};
 
     // ==================== Furniture Definitions ====================
     // Each furniture item: { type, gridX, gridY, variant?, facing? }
+    // 크기 표기법: W x H = gx방향(↘) x gy방향(↙)
     const FURNITURE = [
-        // No furniture - clean floor only
+        // 중앙 회의 테이블 (5x3 크기: gx방향 5타일, gy방향 3타일)
+        // 카펫 영역 중앙에 배치
+        { type: 'conferenceTable', gridX: 3, gridY: 3 },
     ];
 
     // ==================== Seat Positions ====================
@@ -75,9 +78,20 @@ window.CompanyView = window.CompanyView || {};
             if (f.wallMount || f.onDesk) continue;
             const gx = Math.floor(f.gridX);
             const gy = Math.floor(f.gridY);
-            if (gx >= 0 && gx < ROOM.WIDTH && gy >= 0 && gy < ROOM.HEIGHT) {
-                // Workstations block their tile
-                if (f.type === 'workstation') {
+
+            if (f.type === 'conferenceTable') {
+                // 5x3 회의 테이블 영역 블로킹 (gx방향 5, gy방향 3)
+                for (let dy = 0; dy < 3; dy++) {
+                    for (let dx = 0; dx < 5; dx++) {
+                        const tx = gx + dx;
+                        const ty = gy + dy;
+                        if (tx >= 0 && tx < ROOM.WIDTH && ty >= 0 && ty < ROOM.HEIGHT) {
+                            map[ty][tx] = false;
+                        }
+                    }
+                }
+            } else if (f.type === 'workstation') {
+                if (gx >= 0 && gx < ROOM.WIDTH && gy >= 0 && gy < ROOM.HEIGHT) {
                     map[gy][gx] = false;
                 }
             }
