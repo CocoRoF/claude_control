@@ -34,6 +34,11 @@ window.CompanyView = window.CompanyView || {};
         { type: 'chair', gridX: 3.5, gridY: 2.2, facing: 'SW' },
         { type: 'chair', gridX: 5, gridY: 2.2, facing: 'SW' },
         { type: 'chair', gridX: 6.5, gridY: 2.2, facing: 'SW' },
+        { type: 'chair', gridX: 2.3, gridY: 3.8, facing: 'SE' },
+        { type: 'chair', gridX: 7.3, gridY: 3.8, facing: 'NW' },
+        { type: 'chair', gridX: 3.5, gridY: 5.4, facing: 'NE' },
+        { type: 'chair', gridX: 5, gridY: 5.4, facing: 'NE' },
+        { type: 'chair', gridX: 6.5, gridY: 5.4, facing: 'NE' },
     ];
 
     // ==================== Seat Positions ====================
