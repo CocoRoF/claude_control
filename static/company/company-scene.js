@@ -298,7 +298,9 @@ window.CompanyView = window.CompanyView || {};
                         furniture.gridY,
                         furniture.facing || 'SW'
                     );
-                    this.objectLayer.addChild(chair);
+                    // 의자 base(다리+좌석)와 backrest(등받이)를 별도로 추가
+                    this.objectLayer.addChild(chair.base);
+                    this.objectLayer.addChild(chair.backrest);
                 }
             }
 

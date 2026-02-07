@@ -367,12 +367,11 @@ window.CompanyView = window.CompanyView || {};
      * @param {number} gridX - 그리드 X 좌표
      * @param {number} gridY - 그리드 Y 좌표
      * @param {string} facing - 의자 방향 ('SE', 'SW', 'NW', 'NE')
-     * @returns {PIXI.Container} 의자 컨테이너
+     * @returns {Object} { base: PIXI.Container, backrest: PIXI.Container }
+     *                   base: 그림자+다리+좌석 (테이블 아래)
+     *                   backrest: 등받이 (테이블 위)
      */
     function createChair(gridX, gridY, facing = 'SW') {
-        const container = new PIXI.Container();
-        const g = new PIXI.Graphics();
-
         const cfg = CHAIR_CONFIG;
         const seatW = cfg.seatWidth;
         const seatD = cfg.seatDepth;
@@ -383,7 +382,6 @@ window.CompanyView = window.CompanyView || {};
         const legInset = cfg.legInset;
 
         // ========== 좌석 꼭지점 계산 (로컬 좌표, 원점 = 의자 중심) ==========
-        // 좌석 크기를 타일 비율로 계산
         const halfW = seatW / 2;
         const halfD = seatD / 2;
 
@@ -400,47 +398,81 @@ window.CompanyView = window.CompanyView || {};
             left: { x: leftPos.x, y: leftPos.y },
         };
 
-        // ========== 그림자 ==========
-        drawChairShadow(g, 0, 0);
+        // ========== Base 컨테이너 (그림자 + 다리 + 좌석) ==========
+        const baseContainer = new PIXI.Container();
+        const baseG = new PIXI.Graphics();
 
-        // ========== 다리 4개 ==========
-        // 다리 위치 (좌석 모서리에서 안쪽으로)
+        // 그림자
+        drawChairShadow(baseG, 0, 0);
+
+        // 다리 4개
         const legOffsetW = halfW - legInset;
         const legOffsetD = halfD - legInset;
         const legHeight = seatHeight - thickness;
 
         const legPositions = [
-            ISO.gridToScreen(-legOffsetW, -legOffsetD),  // 뒤쪽 (top 방향)
-            ISO.gridToScreen(legOffsetW, -legOffsetD),   // 우측 (right 방향)
-            ISO.gridToScreen(legOffsetW, legOffsetD),    // 앞쪽 (bottom 방향)
-            ISO.gridToScreen(-legOffsetW, legOffsetD),   // 좌측 (left 방향)
+            ISO.gridToScreen(-legOffsetW, -legOffsetD),
+            ISO.gridToScreen(legOffsetW, -legOffsetD),
+            ISO.gridToScreen(legOffsetW, legOffsetD),
+            ISO.gridToScreen(-legOffsetW, legOffsetD),
         ];
 
         // 깊이 순서에 따라 다리 그리기 (뒤쪽부터)
-        // 뒤쪽 다리 2개
-        drawChairLeg(g, legPositions[0].x, legPositions[0].y, legHeight);
-        drawChairLeg(g, legPositions[1].x, legPositions[1].y, legHeight);
-        // 앞쪽 다리 2개
-        drawChairLeg(g, legPositions[3].x, legPositions[3].y, legHeight);
-        drawChairLeg(g, legPositions[2].x, legPositions[2].y, legHeight);
+        drawChairLeg(baseG, legPositions[0].x, legPositions[0].y, legHeight);
+        drawChairLeg(baseG, legPositions[1].x, legPositions[1].y, legHeight);
+        drawChairLeg(baseG, legPositions[3].x, legPositions[3].y, legHeight);
+        drawChairLeg(baseG, legPositions[2].x, legPositions[2].y, legHeight);
 
-        // ========== 좌석 ==========
-        const seatCorners = drawChairSeat(g, corners, seatHeight, thickness);
+        // 좌석
+        const seatCorners = drawChairSeat(baseG, corners, seatHeight, thickness);
 
-        // ========== 등받이 ==========
-        drawChairBack(g, seatCorners, facing, backHeight, backThickness);
+        baseContainer.addChild(baseG);
 
-        container.addChild(g);
+        // ========== Backrest 컨테이너 (등받이) ==========
+        const backrestContainer = new PIXI.Container();
+        const backrestG = new PIXI.Graphics();
+
+        drawChairBack(backrestG, seatCorners, facing, backHeight, backThickness);
+
+        backrestContainer.addChild(backrestG);
 
         // ========== 위치 및 깊이 설정 ==========
         const screenPos = ISO.gridToScreen(gridX, gridY);
-        container.x = screenPos.x;
-        container.y = screenPos.y;
 
-        // 깊이 정렬 (의자 위치 기준)
-        container.zIndex = ISO.depthKey(gridX, gridY, 0.5);
+        baseContainer.x = screenPos.x;
+        baseContainer.y = screenPos.y;
+        // 의자 하단은 테이블보다 먼저 렌더링 (테이블 아래)
+        baseContainer.zIndex = ISO.depthKey(gridX, gridY, -300);
 
-        return container;
+        backrestContainer.x = screenPos.x;
+        backrestContainer.y = screenPos.y;
+
+        // 등받이의 실제 위치를 반영한 zIndex 계산
+        // facing에 따라 등받이가 의자 기준 어느 방향에 있는지 결정
+        let backrestGridX = gridX;
+        let backrestGridY = gridY;
+        const backOffset = 0.5; // 등받이 위치 오프셋
+
+        switch (facing) {
+            case 'SE': // 등받이가 gx-- 방향
+                backrestGridX -= backOffset;
+                break;
+            case 'SW': // 등받이가 gy-- 방향
+                backrestGridY -= backOffset;
+                break;
+            case 'NW': // 등받이가 gx++ 방향
+                backrestGridX += backOffset;
+                break;
+            case 'NE': // 등받이가 gy++ 방향
+                backrestGridY += backOffset;
+                break;
+        }
+
+        // 등받이는 실제 위치 기준으로 depth 계산 + 테이블보다 확실히 위에 렌더링
+        // layer를 높게 설정하여 (gx+gy) 차이를 상쇄
+        backrestContainer.zIndex = ISO.depthKey(backrestGridX, backrestGridY, 200);
+
+        return { base: baseContainer, backrest: backrestContainer };
     }
 
     // ==================== Export ====================
