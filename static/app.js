@@ -101,7 +101,7 @@ async function loadSessions() {
         renderSessionList();
         updateSessionStats();
         updateBatchSessionList();
-        syncCompanySessions();
+        syncPlaygroundSessions();
     } catch (error) {
         showError('Failed to load sessions: ' + error.message);
     }
@@ -565,20 +565,20 @@ function switchTab(tabName) {
         loadSessionLogs();
     }
 
-    // Initialize or sync company view
+    // Initialize or sync playground view
     if (tabName === 'company') {
-        initCompanyView();
+        initPlaygroundView();
     }
 }
 
-// ========== Company View ==========
+// ========== Playground View (Three.js) ==========
 
-let _companyInitialized = false;
+let _playgroundInitialized = false;
 
-function initCompanyView() {
-    if (_companyInitialized) {
+function initPlaygroundView() {
+    if (_playgroundInitialized) {
         // Just sync sessions
-        syncCompanySessions();
+        syncPlaygroundSessions();
         return;
     }
 
@@ -586,33 +586,33 @@ function initCompanyView() {
     const loading = document.getElementById('company-loading');
     if (!container) return;
 
-    // Check if PixiJS is loaded
-    if (typeof PIXI === 'undefined') {
-        if (loading) loading.querySelector('.company-loading-text').textContent = 'Loading PixiJS...';
-        console.error('PixiJS not loaded');
+    // Check if Three.js and Playground are loaded
+    if (typeof THREE === 'undefined' || !window.Playground || !window.Playground.Scene) {
+        if (loading) loading.querySelector('.company-loading-text').textContent = 'Loading Three.js...';
+        console.error('Three.js or Playground not loaded');
         return;
     }
 
     // Wait a frame for the tab to become visible and sized
     requestAnimationFrame(() => {
         try {
-            const scene = window.CompanyView.getInstance();
+            const scene = window.Playground.Scene;
             scene.mount(container).then(() => {
-                _companyInitialized = true;
+                _playgroundInitialized = true;
                 if (loading) loading.style.display = 'none';
 
                 // Initial session sync
-                syncCompanySessions();
+                syncPlaygroundSessions();
 
                 // Listen for avatar clicks
-                document.addEventListener('company-avatar-click', (e) => {
+                document.addEventListener('playground-avatar-click', (e) => {
                     const sessionId = e.detail.sessionId;
                     selectSession(sessionId);
                     switchTab('command');
                 });
             });
         } catch (err) {
-            console.error('Failed to init company view:', err);
+            console.error('Failed to init playground view:', err);
             if (loading) {
                 loading.querySelector('.company-loading-text').textContent = 'Failed to initialize';
             }
@@ -620,9 +620,9 @@ function initCompanyView() {
     });
 }
 
-function syncCompanySessions() {
-    if (!_companyInitialized) return;
-    const scene = window.CompanyView.getInstance();
+function syncPlaygroundSessions() {
+    if (!_playgroundInitialized) return;
+    const scene = window.Playground.Scene;
     if (scene && scene.isInitialized) {
         scene.syncSessions(state.sessions);
 
@@ -667,8 +667,8 @@ function updateCompanyStatusOverlay() {
  * 캐릭터에게 요청 시작 알림
  */
 function notifyCharacterRequestStart(sessionId) {
-    if (!_companyInitialized) return;
-    const scene = window.CompanyView.getInstance();
+    if (!_playgroundInitialized) return;
+    const scene = window.Playground.Scene;
     if (scene && scene.isInitialized) {
         scene.notifyRequestStart(sessionId);
     }
@@ -678,25 +678,25 @@ function notifyCharacterRequestStart(sessionId) {
  * 캐릭터에게 요청 완료 알림
  */
 function notifyCharacterRequestEnd(sessionId, success) {
-    if (!_companyInitialized) return;
-    const scene = window.CompanyView.getInstance();
+    if (!_playgroundInitialized) return;
+    const scene = window.Playground.Scene;
     if (scene && scene.isInitialized) {
         scene.notifyRequestEnd(sessionId, success);
     }
 }
 
 function companyZoomIn() {
-    const scene = window.CompanyView.getInstance();
+    const scene = window.Playground.Scene;
     if (scene) scene.zoomIn();
 }
 
 function companyZoomOut() {
-    const scene = window.CompanyView.getInstance();
+    const scene = window.Playground.Scene;
     if (scene) scene.zoomOut();
 }
 
 function companyResetView() {
-    const scene = window.CompanyView.getInstance();
+    const scene = window.Playground.Scene;
     if (scene) scene.resetView();
 }
 

@@ -335,8 +335,15 @@ window.CompanyView = window.CompanyView || {};
         // 3D 애니메이터 사용 중인 경우 텍스처 업데이트
         if (character && character._uses3DAnimator && CharacterAnimator3D) {
             const texture = CharacterAnimator3D.getTexture(data.sessionId);
-            if (texture && character.texture !== texture) {
-                character.texture = texture;
+            if (texture) {
+                // 텍스처가 다르면 교체
+                if (character.texture !== texture) {
+                    character.texture = texture;
+                }
+                // BaseTexture 강제 업데이트
+                if (texture.baseTexture && texture.baseTexture.resource) {
+                    texture.baseTexture.resource.update();
+                }
             }
         }
 

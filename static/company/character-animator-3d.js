@@ -174,6 +174,17 @@ window.CompanyView = window.CompanyView || {};
             this.renderer.setPixelRatio(1);
             this.renderer.setClearColor(0x000000, 0);
 
+            // ===== 디버그: Three.js 캔버스를 화면에 표시 =====
+            this.renderer.domElement.style.position = 'fixed';
+            this.renderer.domElement.style.top = '10px';
+            this.renderer.domElement.style.right = '10px';
+            this.renderer.domElement.style.zIndex = '9999';
+            this.renderer.domElement.style.border = '2px solid red';
+            this.renderer.domElement.style.background = '#333';
+            document.body.appendChild(this.renderer.domElement);
+            console.log('[CharacterAnimator3D] DEBUG: Three.js canvas added to DOM');
+            // ===== 디버그 끝 =====
+
             // 씬 생성
             this.scene = new THREE.Scene();
 
@@ -282,13 +293,22 @@ window.CompanyView = window.CompanyView || {};
                 return null;
             }
 
-            // 모델 복제
-            const model = THREE.SkeletonUtils ?
-                THREE.SkeletonUtils.clone(template.scene) :
-                template.scene.clone();
+            // 모델 복제 - SkeletonUtils 필수
+            let model;
+            if (THREE.SkeletonUtils) {
+                model = THREE.SkeletonUtils.clone(template.scene);
+                debugLog('Using SkeletonUtils.clone');
+            } else {
+                console.warn('[CharacterAnimator3D] SkeletonUtils not available! Bones will not animate.');
+                model = template.scene.clone();
+            }
 
             // 본 캐싱
             const bones = this._cacheBones(model);
+            debugLog('Bones found:', bones.armLeft ? 'armLeft OK' : 'armLeft MISSING',
+                bones.armRight ? 'armRight OK' : 'armRight MISSING',
+                bones.legLeft ? 'legLeft OK' : 'legLeft MISSING',
+                bones.legRight ? 'legRight OK' : 'legRight MISSING');
 
             // 모델 중심/스케일 조정
             const box = new THREE.Box3().setFromObject(model);
@@ -365,11 +385,12 @@ window.CompanyView = window.CompanyView || {};
             if (data) {
                 data.targetDirection = direction;
                 data.dirty = true;
+                debugLog(`${sessionId.substring(0, 8)} direction: ${direction}`);
             }
         }
 
         /**
-         * 본 캐싱 - 모델에서 본 참조 저장
+         * 본 캐싱 - 스켈레톤에서 직접 본 참조 저장
          */
         _cacheBones(model) {
             const bones = {
@@ -383,39 +404,80 @@ window.CompanyView = window.CompanyView || {};
                 initialRotations: {},
             };
 
+            // 스켈레톤에서 직접 본 가져오기
+            let skeleton = null;
             model.traverse((child) => {
-                if (child.isBone) {
-                    const name = child.name.toLowerCase();
-                    debugLog(`Found bone: ${child.name}`);
-                    if (name === 'root') {
-                        bones.root = child;
-                        bones.initialRotations.root = child.rotation.clone();
-                    } else if (name === 'torso') {
-                        bones.torso = child;
-                        bones.initialRotations.torso = child.rotation.clone();
-                    } else if (name === 'head') {
-                        bones.head = child;
-                        bones.initialRotations.head = child.rotation.clone();
-                    } else if (name === 'arm-left') {
-                        bones.armLeft = child;
-                        bones.initialRotations.armLeft = child.rotation.clone();
-                    } else if (name === 'arm-right') {
-                        bones.armRight = child;
-                        bones.initialRotations.armRight = child.rotation.clone();
-                    } else if (name === 'leg-left') {
-                        bones.legLeft = child;
-                        bones.initialRotations.legLeft = child.rotation.clone();
-                    } else if (name === 'leg-right') {
-                        bones.legRight = child;
-                        bones.initialRotations.legRight = child.rotation.clone();
-                    }
+                if (child.isSkinnedMesh && child.skeleton && !skeleton) {
+                    skeleton = child.skeleton;
+                    debugLog('Found skeleton with', skeleton.bones.length, 'bones');
                 }
             });
+
+            if (!skeleton) {
+                console.warn('[CharacterAnimator3D] No skeleton found in model!');
+                // 폴백: 모델에서 직접 본 찾기
+                model.traverse((child) => {
+                    if (child.isBone) {
+                        const name = child.name.toLowerCase();
+                        debugLog(`Found bone (fallback): ${child.name}`);
+                        if (name === 'root') {
+                            bones.root = child;
+                            bones.initialRotations.root = child.rotation.clone();
+                        } else if (name === 'torso') {
+                            bones.torso = child;
+                            bones.initialRotations.torso = child.rotation.clone();
+                        } else if (name === 'head') {
+                            bones.head = child;
+                            bones.initialRotations.head = child.rotation.clone();
+                        } else if (name === 'arm-left') {
+                            bones.armLeft = child;
+                            bones.initialRotations.armLeft = child.rotation.clone();
+                        } else if (name === 'arm-right') {
+                            bones.armRight = child;
+                            bones.initialRotations.armRight = child.rotation.clone();
+                        } else if (name === 'leg-left') {
+                            bones.legLeft = child;
+                            bones.initialRotations.legLeft = child.rotation.clone();
+                        } else if (name === 'leg-right') {
+                            bones.legRight = child;
+                            bones.initialRotations.legRight = child.rotation.clone();
+                        }
+                    }
+                });
+            } else {
+                // 스켈레톤의 본 배열에서 직접 가져오기
+                for (const bone of skeleton.bones) {
+                    const name = bone.name.toLowerCase();
+                    debugLog(`Skeleton bone: ${bone.name}`);
+                    if (name === 'root') {
+                        bones.root = bone;
+                        bones.initialRotations.root = bone.rotation.clone();
+                    } else if (name === 'torso') {
+                        bones.torso = bone;
+                        bones.initialRotations.torso = bone.rotation.clone();
+                    } else if (name === 'head') {
+                        bones.head = bone;
+                        bones.initialRotations.head = bone.rotation.clone();
+                    } else if (name === 'arm-left') {
+                        bones.armLeft = bone;
+                        bones.initialRotations.armLeft = bone.rotation.clone();
+                    } else if (name === 'arm-right') {
+                        bones.armRight = bone;
+                        bones.initialRotations.armRight = bone.rotation.clone();
+                    } else if (name === 'leg-left') {
+                        bones.legLeft = bone;
+                        bones.initialRotations.legLeft = bone.rotation.clone();
+                    } else if (name === 'leg-right') {
+                        bones.legRight = bone;
+                        bones.initialRotations.legRight = bone.rotation.clone();
+                    }
+                }
+            }
 
             const foundBones = Object.keys(bones).filter(k => k !== 'initialRotations' && bones[k]);
             debugLog('Cached bones:', foundBones.join(', '));
             if (foundBones.length === 0) {
-                console.warn('[CharacterAnimator3D] No bones found in model!');
+                console.warn('[CharacterAnimator3D] No bones found!');
             }
             return bones;
         }
@@ -435,10 +497,9 @@ window.CompanyView = window.CompanyView || {};
          * 개별 캐릭터 애니메이션 업데이트 - 본 기반
          */
         _updateCharacterAnimation(data, deltaTime) {
-            const { animState, model, bones, basePosition, baseRotation } = data;
+            const { animState, model, bones } = data;
 
             if (!bones) {
-                console.warn('[CharacterAnimator3D] No bones in character data');
                 return;
             }
 
@@ -449,24 +510,58 @@ window.CompanyView = window.CompanyView || {};
             data.phase += dt * speed;
             const t = data.phase;
 
-            // 방향 부드럽게 전환
+            // 방향에 따른 모델 회전 (Y축) - 즉시 적용
             const targetRotY = ANIM_CONFIG.directionRotation[data.targetDirection] || 0;
-            const currentRotY = model.rotation.y;
-            let rotDiff = targetRotY - currentRotY;
-            // 최단 경로로 회전
+            // 부드러운 전환
+            const rotSpeed = 10;
+            let rotDiff = targetRotY - model.rotation.y;
             while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
             while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-            model.rotation.y = currentRotY + rotDiff * Math.min(dt * 8, 1);
+            model.rotation.y += rotDiff * Math.min(dt * rotSpeed, 1);
             data.direction = data.targetDirection;
 
             // 본 애니메이션 설정 가져오기
             const boneAnim = ANIM_CONFIG.boneAnim[animState] || ANIM_CONFIG.boneAnim.idle;
             const initRot = bones.initialRotations || {};
 
+            // 디버그: 100프레임마다 본 회전값 출력
+            if (!data._debugFrameCount) data._debugFrameCount = 0;
+            data._debugFrameCount++;
+            const shouldLog = data._debugFrameCount % 100 === 1;
+
             // 디폴트 Euler 생성
             const defaultEuler = { x: 0, y: 0, z: 0 };
 
-            // 각 본 애니메이션 - 직접 회전값 설정
+            // ===== 디버그 테스트: 강제로 큰 회전 적용 =====
+            if (bones.armLeft) {
+                bones.armLeft.rotation.x = Math.sin(t) * 2.0;  // 매우 큰 회전
+                bones.armLeft.rotation.z = 1.0;  // 팔 옆으로
+            }
+            if (bones.armRight) {
+                bones.armRight.rotation.x = Math.sin(t + Math.PI) * 2.0;
+                bones.armRight.rotation.z = -1.0;
+            }
+            if (bones.legLeft) {
+                bones.legLeft.rotation.x = Math.sin(t) * 1.0;
+            }
+            if (bones.legRight) {
+                bones.legRight.rotation.x = Math.sin(t + Math.PI) * 1.0;
+            }
+
+            // 본 타입 확인 (한 번만)
+            if (shouldLog && bones.armLeft) {
+                console.log('[DEBUG] Bone type check:', {
+                    isBone: bones.armLeft.isBone,
+                    type: bones.armLeft.type,
+                    name: bones.armLeft.name,
+                    rotation: `(${bones.armLeft.rotation.x.toFixed(2)}, ${bones.armLeft.rotation.y.toFixed(2)}, ${bones.armLeft.rotation.z.toFixed(2)})`,
+                    parent: bones.armLeft.parent ? bones.armLeft.parent.name : 'none',
+                });
+            }
+            // ===== 디버그 테스트 끝 =====
+
+            // 각 본 애니메이션 - 직접 회전값 설정 (일단 주석 처리)
+            /*
             if (bones.torso && boneAnim.torso) {
                 const cfg = boneAnim.torso;
                 const init = initRot.torso || defaultEuler;
@@ -524,7 +619,21 @@ window.CompanyView = window.CompanyView || {};
                 bones.legRight.rotation.x = init.x + (cfg.rotX || 0) * Math.sin(phase);
             }
 
+            // 디버그: 본 회전값 로그
+            if (shouldLog && bones.armLeft) {
+                debugLog(`Bone anim - state:${animState}, t:${t.toFixed(2)}, armL.x:${bones.armLeft.rotation.x.toFixed(3)}, armL.z:${bones.armLeft.rotation.z.toFixed(3)}, legL.x:${bones.legLeft ? bones.legLeft.rotation.x.toFixed(3) : 'N/A'}`);
+            }
+            */
+
             data.dirty = true;
+
+            // 모델 전체의 월드 매트릭스 업데이트 후 스켈레톤 업데이트
+            model.updateMatrixWorld(true);
+            model.traverse((child) => {
+                if (child.isSkinnedMesh && child.skeleton) {
+                    child.skeleton.update();
+                }
+            });
         }
 
         /**
@@ -536,6 +645,14 @@ window.CompanyView = window.CompanyView || {};
 
             // 씬에 모델 추가
             this.scene.add(data.model);
+
+            // 매트릭스 업데이트 후 스켈레톤 갱신
+            data.model.updateMatrixWorld(true);
+            data.model.traverse((child) => {
+                if (child.isSkinnedMesh && child.skeleton) {
+                    child.skeleton.update();
+                }
+            });
 
             // 렌더링
             this.renderer.render(this.scene, this.camera);
@@ -557,14 +674,22 @@ window.CompanyView = window.CompanyView || {};
          * PixiJS 텍스처로 렌더링하고 반환
          */
         renderToTexture(sessionId) {
-            const canvas = this._renderCharacter(sessionId);
-            if (!canvas) return null;
-
             const data = this.characterData.get(sessionId);
             if (!data) return null;
 
-            // 기존 텍스처 업데이트 또는 새로 생성
+            // 렌더링
+            const canvas = this._renderCharacter(sessionId);
+            if (!canvas) {
+                // dirty가 아니어도 기존 텍스처 반환
+                return data.texture;
+            }
+
+            // 텍스처 생성 또는 강제 업데이트
             if (data.texture) {
+                // BaseTexture 강제 업데이트
+                if (data.texture.baseTexture && data.texture.baseTexture.resource) {
+                    data.texture.baseTexture.resource.update();
+                }
                 data.texture.update();
             } else {
                 data.texture = PIXI.Texture.from(data.canvas);
