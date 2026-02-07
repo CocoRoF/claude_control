@@ -39,7 +39,8 @@ window.CompanyView = window.CompanyView || {};
         { type: 'chair', gridX: 3.5, gridY: 5.6, facing: 'NE' },
         { type: 'chair', gridX: 5, gridY: 5.6, facing: 'NE' },
         { type: 'chair', gridX: 6.5, gridY: 5.6, facing: 'NE' },
-    ];
+        // 우상단 사이드 체어 (빨간색 오피스 체어)
+        { type: 'sideChair', gridX: 9.5, gridY: 1.5, facing: 'SW' },    ];
 
     // ==================== Seat Positions ====================
     // Positions where avatars can sit at workstations
