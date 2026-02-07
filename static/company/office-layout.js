@@ -23,23 +23,7 @@ window.CompanyView = window.CompanyView || {};
     // ==================== Furniture Definitions ====================
     // Each furniture item: { type, gridX, gridY, variant?, facing? }
     const FURNITURE = [
-        // Row 1 - Back desks (near back wall)
-        { type: 'workstation', gridX: 2, gridY: 2, chairColor: 'blue', variant: 'wood' },
-        { type: 'workstation', gridX: 4, gridY: 2, chairColor: 'green', variant: 'wood' },
-        { type: 'workstation', gridX: 6, gridY: 2, chairColor: 'pink', variant: 'wood' },
-        { type: 'workstation', gridX: 8, gridY: 2, chairColor: 'blue', variant: 'wood' },
-
-        // Row 2 - Middle desks
-        { type: 'workstation', gridX: 2, gridY: 4, chairColor: 'green', variant: 'modern' },
-        { type: 'workstation', gridX: 4, gridY: 4, chairColor: 'pink', variant: 'modern' },
-        { type: 'workstation', gridX: 6, gridY: 4, chairColor: 'blue', variant: 'modern' },
-        { type: 'workstation', gridX: 8, gridY: 4, chairColor: 'green', variant: 'modern' },
-
-        // Row 3 - Front desks
-        { type: 'workstation', gridX: 2, gridY: 6, chairColor: 'pink', variant: 'wood' },
-        { type: 'workstation', gridX: 4, gridY: 6, chairColor: 'blue', variant: 'wood' },
-        { type: 'workstation', gridX: 6, gridY: 6, chairColor: 'green', variant: 'wood' },
-        { type: 'workstation', gridX: 8, gridY: 6, chairColor: 'pink', variant: 'wood' },
+        // No furniture - clean floor only
     ];
 
     // ==================== Seat Positions ====================

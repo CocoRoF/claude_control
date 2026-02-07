@@ -268,27 +268,7 @@ window.CompanyView = window.CompanyView || {};
         }
 
         _placeFurniture() {
-            for (const item of Layout.FURNITURE) {
-                const pos = ISO.gridToScreen(item.gridX, item.gridY);
-                let sprite;
-
-                switch (item.type) {
-                    case 'workstation':
-                        sprite = Assets.createWorkstation(item.chairColor, item.variant);
-                        break;
-                    default:
-                        continue;
-                }
-
-                if (sprite) {
-                    sprite.x = pos.x;
-                    sprite.y = (sprite.y || 0) + pos.y;
-                    sprite.zIndex = ISO.depthKey(item.gridX, item.gridY,
-                        item.wallMount ? -1 : 0);
-                    this.objectLayer.addChild(sprite);
-                }
-            }
-
+            // No furniture to place
             this.objectLayer.markDirty();
         }
 

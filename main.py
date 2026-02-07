@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 from pathlib import Path
+from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,8 +67,19 @@ def print_step_banner(step: str, title: str, description: str = ""):
     logger.info(banner)
 
 
-def init_redis_client(app: FastAPI) -> RedisClient:
-    """Initialize Redis client and register in app.state"""
+def init_redis_client(app: FastAPI) -> Optional[RedisClient]:
+    """Initialize Redis client and register in app.state
+
+    Only attempts Redis connection if USE_REDIS environment variable is set to 'true'.
+    Returns None if Redis is disabled.
+    """
+    use_redis = os.getenv('USE_REDIS', 'false').lower() == 'true'
+
+    if not use_redis:
+        logger.info("ℹ️  Redis disabled (USE_REDIS=false) - running in local memory mode")
+        app.state.redis_client = None
+        return None
+
     redis_client = RedisClient()
 
     # Register in FastAPI app.state for global access
@@ -106,8 +118,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"   - Pod IP: {pod_info.pod_ip}")
     logger.info(f"   - Service Port: {pod_info.service_port}")
 
-    # Initialize Redis client and register in app.state
-    print_step_banner("REDIS", "REDIS CONNECTION", "Connecting to Redis server...")
+    # Initialize Redis client and register in app.state (only if USE_REDIS=true)
+    use_redis = os.getenv('USE_REDIS', 'false').lower() == 'true'
+    if use_redis:
+        print_step_banner("REDIS", "REDIS CONNECTION", "Connecting to Redis server...")
+    else:
+        print_step_banner("REDIS", "REDIS DISABLED", "Running in local memory mode")
     redis_client = init_redis_client(app)
 
     # Inject Redis client into SessionManager
