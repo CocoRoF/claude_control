@@ -211,35 +211,77 @@ window.CompanyView = window.CompanyView || {};
     function drawChairBack(g, seatCorners, facing, backHeight, backThickness) {
         const pal = CHAIR_PALETTE.back;
 
-        // 등받이 위치 계산 (방향에 따라 다름)
+        // 아이소메트릭 카메라는 우상단에서 좌하단을 내려다봄
+        // 따라서 gx++ 방향(↘)과 gy++ 방향(↙) 면이 보임
+        // gx-- 방향(↖)과 gy-- 방향(↗) 면은 안 보임
+
+        // 등받이 방향별 설정
+        // - baseLeft/baseRight: 등받이 하단 좌우 꼭지점
+        // - thicknessDir: 두께가 그려지는 방향 ('gx+', 'gx-', 'gy+', 'gy-')
+        // - showThickness: 두께 면이 카메라에 보이는지
+        // - showLeftSide/showRightSide: 좌우 측면 중 어느 쪽이 보이는지
         let baseLeft, baseRight;
-        let isHorizontal = false; // 등받이가 gx 방향인지 gy 방향인지
+        let thicknessOffsetX = 0;
+        let thicknessOffsetY = 0;
+        let showThickness = false;
+        let showLeftSide = false;
+        let showRightSide = false;
+
+        const thicknessPx = backThickness * 3; // 두께를 픽셀 단위로 증폭
 
         switch (facing) {
-            case 'SE': // gx++ 바라봄 → 등받이는 top-left 쪽 (top과 left 사이)
+            case 'SE': // gx++ 바라봄 → 등받이는 좌상단 가장자리 (left~top)
                 baseLeft = seatCorners.left;
                 baseRight = seatCorners.top;
-                isHorizontal = false;
+                // 등받이 두께는 gx++ 방향(↘)으로 = 사용자 앞쪽
+                // 화면상: x+, y+ 방향
+                thicknessOffsetX = thicknessPx * 0.5;
+                thicknessOffsetY = thicknessPx * 0.25;
+                showThickness = true; // gx++ 방향은 보임
+                showRightSide = true; // 오른쪽(top) 측면이 보임 (gy++ 방향)
                 break;
-            case 'SW': // gy++ 바라봄 → 등받이는 top-right 쪽 (top과 right 사이)
+
+            case 'SW': // gy++ 바라봄 → 등받이는 우상단 가장자리 (top~right)
                 baseLeft = seatCorners.top;
                 baseRight = seatCorners.right;
-                isHorizontal = true;
+                // 등받이 두께는 gy++ 방향(↙)으로 = 사용자 앞쪽
+                // 화면상: x-, y+ 방향
+                thicknessOffsetX = -thicknessPx * 0.5;
+                thicknessOffsetY = thicknessPx * 0.25;
+                showThickness = true; // gy++ 방향은 보임
+                showLeftSide = true; // 왼쪽(top) 측면이 보임 (gx++ 방향)
                 break;
-            case 'NW': // gx-- 바라봄 → 등받이는 bottom-right 쪽 (right와 bottom 사이)
+
+            case 'NW': // gx-- 바라봄 → 등받이는 우하단 가장자리 (right~bottom)
                 baseLeft = seatCorners.right;
                 baseRight = seatCorners.bottom;
-                isHorizontal = false;
+                // 등받이 두께는 gx-- 방향(↖)으로 = 사용자 앞쪽
+                // 화면상: x-, y- 방향 → 카메라에 안 보임
+                // 대신 반대쪽(gx++ 방향) 뒷면이 보여야 함
+                thicknessOffsetX = thicknessPx * 0.5;
+                thicknessOffsetY = thicknessPx * 0.25;
+                showThickness = true; // 뒷면(gx++ 방향)이 보임
+                showLeftSide = true; // 왼쪽(right) 측면이 보임 (gy++ 방향)
                 break;
-            case 'NE': // gy-- 바라봄 → 등받이는 bottom-left 쪽 (bottom과 left 사이)
+
+            case 'NE': // gy-- 바라봄 → 등받이는 좌하단 가장자리 (bottom~left)
                 baseLeft = seatCorners.bottom;
                 baseRight = seatCorners.left;
-                isHorizontal = true;
+                // 등받이 두께는 gy-- 방향(↗)으로 = 사용자 앞쪽
+                // 화면상: x+, y- 방향 → 카메라에 안 보임
+                // 대신 반대쪽(gy++ 방향) 뒷면이 보여야 함
+                thicknessOffsetX = -thicknessPx * 0.5;
+                thicknessOffsetY = thicknessPx * 0.25;
+                showThickness = true; // 뒷면(gy++ 방향)이 보임
+                showRightSide = true; // 오른쪽(left) 측면이 보임 (gx++ 방향)
                 break;
+
             default:
                 baseLeft = seatCorners.top;
                 baseRight = seatCorners.right;
-                isHorizontal = true;
+                thicknessOffsetX = -thicknessPx * 0.5;
+                thicknessOffsetY = thicknessPx * 0.25;
+                showThickness = true;
         }
 
         // 등받이 베이스 좌표 (좌석 상단면 위)
@@ -250,6 +292,45 @@ window.CompanyView = window.CompanyView || {};
         const tl = { x: bl.x, y: bl.y - backHeight };
         const tr = { x: br.x, y: br.y - backHeight };
 
+        // 두께가 적용된 뒷면 좌표
+        const bl2 = { x: bl.x + thicknessOffsetX, y: bl.y + thicknessOffsetY };
+        const br2 = { x: br.x + thicknessOffsetX, y: br.y + thicknessOffsetY };
+        const tl2 = { x: tl.x + thicknessOffsetX, y: tl.y + thicknessOffsetY };
+        const tr2 = { x: tr.x + thicknessOffsetX, y: tr.y + thicknessOffsetY };
+
+        // ========== 등받이 두께 면 (앞뒤 연결) ==========
+        if (showThickness) {
+            g.beginFill(pal.side);
+            g.moveTo(bl.x, bl.y);
+            g.lineTo(br.x, br.y);
+            g.lineTo(br2.x, br2.y);
+            g.lineTo(bl2.x, bl2.y);
+            g.closePath();
+            g.endFill();
+        }
+
+        // ========== 왼쪽 측면 ==========
+        if (showLeftSide) {
+            g.beginFill(pal.side, 0.9);
+            g.moveTo(bl.x, bl.y);
+            g.lineTo(bl2.x, bl2.y);
+            g.lineTo(tl2.x, tl2.y);
+            g.lineTo(tl.x, tl.y);
+            g.closePath();
+            g.endFill();
+        }
+
+        // ========== 오른쪽 측면 ==========
+        if (showRightSide) {
+            g.beginFill(pal.side, 0.9);
+            g.moveTo(br.x, br.y);
+            g.lineTo(br2.x, br2.y);
+            g.lineTo(tr2.x, tr2.y);
+            g.lineTo(tr.x, tr.y);
+            g.closePath();
+            g.endFill();
+        }
+
         // ========== 등받이 전면 ==========
         g.beginFill(pal.front);
         g.moveTo(bl.x, bl.y);
@@ -259,50 +340,17 @@ window.CompanyView = window.CompanyView || {};
         g.closePath();
         g.endFill();
 
-        // ========== 등받이 두께 (측면) ==========
-        if (isHorizontal) {
-            // gx 방향 등받이 → 두께는 gy-- 방향으로
-            const offset = backThickness * 0.7;
-            g.beginFill(pal.side);
-            g.moveTo(bl.x, bl.y);
-            g.lineTo(bl.x + offset, bl.y - offset / 2);
-            g.lineTo(tl.x + offset, tl.y - offset / 2);
-            g.lineTo(tl.x, tl.y);
-            g.closePath();
-            g.endFill();
-        } else {
-            // gy 방향 등받이 → 두께는 gx++ 방향으로
-            const offset = backThickness * 0.7;
-            g.beginFill(pal.side);
-            g.moveTo(br.x, br.y);
-            g.lineTo(br.x + offset, br.y + offset / 2);
-            g.lineTo(tr.x + offset, tr.y + offset / 2);
-            g.lineTo(tr.x, tr.y);
-            g.closePath();
-            g.endFill();
-        }
-
-        // ========== 등받이 상단 ==========
+        // ========== 등받이 상단면 ==========
         g.beginFill(pal.top);
-        if (isHorizontal) {
-            const offset = backThickness * 0.7;
-            g.moveTo(tl.x, tl.y);
-            g.lineTo(tr.x, tr.y);
-            g.lineTo(tr.x + offset, tr.y - offset / 2);
-            g.lineTo(tl.x + offset, tl.y - offset / 2);
-        } else {
-            const offset = backThickness * 0.7;
-            g.moveTo(tl.x, tl.y);
-            g.lineTo(tr.x, tr.y);
-            g.lineTo(tr.x + offset, tr.y + offset / 2);
-            g.lineTo(tl.x + offset, tl.y + offset / 2);
-        }
+        g.moveTo(tl.x, tl.y);
+        g.lineTo(tr.x, tr.y);
+        g.lineTo(tr2.x, tr2.y);
+        g.lineTo(tl2.x, tl2.y);
         g.closePath();
         g.endFill();
 
         // ========== 등받이 장식 (수평선) ==========
         g.lineStyle(1, pal.side, 0.5);
-        const midY = (bl.y + tl.y) / 2;
         const midYOffset = backHeight * 0.3;
         // 상단 장식선
         g.moveTo(bl.x, bl.y - midYOffset - 2);
