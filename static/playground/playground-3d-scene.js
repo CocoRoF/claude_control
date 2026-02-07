@@ -33,6 +33,7 @@
 
             // Systems
             this.assetLoader = null;
+            this.avatarSystem = null;
 
             // Scene elements
             this.groundTiles = [];
@@ -119,6 +120,9 @@
 
             // Build the city
             this._buildCity();
+
+            // Initialize avatar system
+            await this._initAvatarSystem();
 
             // Setup input handlers
             this._setupInputHandlers();
@@ -413,6 +417,11 @@
             const deltaTime = timestamp - this.lastFrameTime;
             this.lastFrameTime = timestamp;
 
+            // Update avatar system
+            if (this.avatarSystem) {
+                this.avatarSystem.update(deltaTime);
+            }
+
             // Render
             this.renderer.render(this.scene, this.camera);
 
@@ -420,20 +429,46 @@
             this.animationFrameId = requestAnimationFrame((t) => this._gameLoop(t));
         }
 
+        async _initAvatarSystem() {
+            if (!window.Playground.AvatarSystem) {
+                console.warn('[City3DScene] AvatarSystem not available');
+                return;
+            }
+
+            this.avatarSystem = new window.Playground.AvatarSystem();
+            await this.avatarSystem.init(this.scene);
+            debugLog('Avatar system initialized');
+        }
+
         // ==================== Public API ====================
 
         syncSessions(sessions) {
-            // No character management - just log for debugging
             if (!this.isInitialized) return;
+
+            // Sync with avatar system
+            if (this.avatarSystem) {
+                this.avatarSystem.syncSessions(sessions);
+            }
+
             debugLog(`syncSessions called with ${sessions.length} sessions`);
         }
 
         notifyRequestStart(sessionId) {
             debugLog(`Request started for ${sessionId.substring(0, 8)}`);
+
+            // Mark avatar as processing
+            if (this.avatarSystem) {
+                this.avatarSystem.setProcessing(sessionId, true);
+            }
         }
 
         notifyRequestComplete(sessionId) {
             debugLog(`Request completed for ${sessionId.substring(0, 8)}`);
+
+            // Mark avatar as done processing
+            if (this.avatarSystem) {
+                this.avatarSystem.setProcessing(sessionId, false);
+            }
         }
 
         zoomIn() {
@@ -486,6 +521,12 @@
             // Dispose asset loader
             if (this.assetLoader) {
                 this.assetLoader.dispose();
+            }
+
+            // Dispose avatar system
+            if (this.avatarSystem) {
+                this.avatarSystem.dispose();
+                this.avatarSystem = null;
             }
 
             // Dispose renderer
