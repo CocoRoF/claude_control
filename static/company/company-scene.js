@@ -12,6 +12,7 @@ window.CompanyView = window.CompanyView || {};
     const IsometricCamera = window.CompanyView.IsometricCamera;
     const DepthSortedContainer = window.CompanyView.DepthSortedContainer;
     const Assets = window.CompanyView.Assets;
+    const WindowAssets = window.CompanyView.WindowAssets;
     const Avatars = window.CompanyView.Avatars;
     const Layout = window.CompanyView.Layout;
     const PathfindingGrid = window.CompanyView.PathfindingGrid;
@@ -265,6 +266,18 @@ window.CompanyView = window.CompanyView || {};
             }
             topCap.endFill();
             this.wallLayer.addChild(topCap);
+
+            // Add windows on the back wall (top-right wall, y=0) - 2 windows
+            const backWindow1 = WindowAssets.createBackWallWindow(3);
+            const backWindow2 = WindowAssets.createBackWallWindow(8);
+            this.wallLayer.addChild(backWindow1);
+            this.wallLayer.addChild(backWindow2);
+
+            // Add windows on the side wall (top-left wall, x=0) - 2 windows
+            const sideWindow1 = WindowAssets.createSideWallWindow(2);
+            const sideWindow2 = WindowAssets.createSideWallWindow(5);
+            this.wallLayer.addChild(sideWindow1);
+            this.wallLayer.addChild(sideWindow2);
         }
 
         _placeFurniture() {
