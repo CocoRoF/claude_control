@@ -535,6 +535,9 @@ class RedisClient:
 
 
 # Global function for convenience
-def get_redis_client() -> RedisClient:
-    """Return Redis client singleton instance"""
+def get_redis_client() -> Optional[RedisClient]:
+    """Return Redis client singleton instance (None if USE_REDIS=false)"""
+    use_redis = os.getenv('USE_REDIS', 'false').lower() == 'true'
+    if not use_redis:
+        return None
     return RedisClient.get_instance()
