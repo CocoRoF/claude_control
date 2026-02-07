@@ -50,8 +50,8 @@
             // Camera control state
             this.cameraAngle = Math.PI / 4;      // 45 degrees horizontal
             this.cameraPitch = Math.PI / 5;      // ~36 degrees vertical
-            this.cameraDistance = 32;            // Increased for larger city
-            this.cameraTarget = new THREE.Vector3(8, 0, 8);  // Center of 17x17 city
+            this.cameraDistance = 38;            // Increased for larger 21x21 city
+            this.cameraTarget = new THREE.Vector3(10, 0, 10);  // Center of 21x21 city
 
             // Pan drag (left mouse)
             this.isPanning = false;
@@ -96,8 +96,8 @@
             this.scene = new THREE.Scene();
             this.scene.background = new THREE.Color(SCENE_CONFIG.backgroundColor);
 
-            // Add fog for atmosphere
-            this.scene.fog = new THREE.Fog(SCENE_CONFIG.backgroundColor, 30, 80);
+            // Add fog for atmosphere - extended for larger city
+            this.scene.fog = new THREE.Fog(SCENE_CONFIG.backgroundColor, 40, 100);
 
             // Setup camera
             this._setupCamera(width, height);
@@ -197,14 +197,14 @@
         }
 
         _createGround() {
-            // Large ground plane
-            const groundGeometry = new THREE.PlaneGeometry(50, 50);
+            // Large ground plane for 21x21 city
+            const groundGeometry = new THREE.PlaneGeometry(60, 60);
             const groundMaterial = new THREE.MeshLambertMaterial({
                 color: SCENE_CONFIG.groundColor
             });
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = -Math.PI / 2;
-            ground.position.set(4.5, -0.01, 4.5);  // Slightly below zero to avoid z-fighting
+            ground.position.set(10, -0.01, 10);  // Center of 21x21 city, slightly below zero
             ground.receiveShadow = true;
             this.scene.add(ground);
         }
@@ -243,6 +243,16 @@
                     model.receiveShadow = true;
                     this.scene.add(model);
                     this.groundTiles.push(model);
+                } else if (tile.isGround) {
+                    // Fallback: create simple green tile if model not loaded
+                    const fallbackGeo = new THREE.PlaneGeometry(1, 1);
+                    const fallbackMat = new THREE.MeshLambertMaterial({ color: 0x4a7c3f });
+                    const fallback = new THREE.Mesh(fallbackGeo, fallbackMat);
+                    fallback.rotation.x = -Math.PI / 2;
+                    fallback.position.set(tile.gx + 0.5, 0.001, tile.gz + 0.5);
+                    fallback.receiveShadow = true;
+                    this.scene.add(fallback);
+                    this.groundTiles.push(fallback);
                 }
             }
 
@@ -291,12 +301,21 @@
             for (const item of nature) {
                 const model = this.assetLoader.getModel(item.type, item.name);
                 if (model) {
+                    // Support fractional positions for natural placement
                     model.position.set(item.gx, 0, item.gz);
                     model.rotation.y = item.rotation || 0;
+
+                    // Support optional scale for variety
+                    if (item.scale) {
+                        model.scale.setScalar(item.scale);
+                    }
+
                     model.castShadow = true;
                     model.receiveShadow = true;
                     this.scene.add(model);
                     this.natureItems.push(model);
+                } else {
+                    console.warn(`[City3DScene] Nature model not found: ${item.type}/${item.name}`);
                 }
             }
 
@@ -486,15 +505,15 @@
         }
 
         zoomOut() {
-            this.cameraDistance = Math.min(40, this.cameraDistance * 1.2);
+            this.cameraDistance = Math.min(60, this.cameraDistance * 1.2);
             this._updateCameraPosition();
         }
 
         resetView() {
             this.cameraAngle = Math.PI / 4;
             this.cameraPitch = Math.PI / 5;
-            this.cameraDistance = 18;
-            this.cameraTarget.set(4.5, 0, 4.5);
+            this.cameraDistance = 38;
+            this.cameraTarget.set(10, 0, 10);  // Center of 21x21 city
             this._updateCameraPosition();
         }
 
