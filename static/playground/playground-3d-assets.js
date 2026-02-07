@@ -21,7 +21,8 @@
         suburban: ASSET_BASE + 'kenney_city-kit-suburban_20/Models/GLB format/',
         characters: ASSET_BASE + 'kenney_mini-characters/Models/GLB format/',
         survival: ASSET_BASE + 'kenney_survival-kit/Models/GLB format/',
-        minigolf: ASSET_BASE + 'kenney_minigolf-kit/Models/GLB format/'
+        minigolf: ASSET_BASE + 'kenney_minigolf-kit/Models/GLB format/',
+        market: ASSET_BASE + 'kenney_mini-market/Models/GLB format/'
     };
 
     // ==================== Asset Manifest ====================
@@ -171,6 +172,11 @@
             flagBlue: { pack: 'minigolf', file: 'flag-blue.glb' },
             windmill: { pack: 'minigolf', file: 'windmill.glb' },
             castle: { pack: 'minigolf', file: 'castle.glb' }
+        },
+
+        // Mini-Market Kit - Floor Tiles
+        market: {
+            floor: { pack: 'market', file: 'floor.glb' }
         }
     };
 

@@ -14,13 +14,19 @@
 
     // ==================== Scene Configuration ====================
     const SCENE_CONFIG = {
-        backgroundColor: 0x87CEEB,  // Sky blue
-        groundColor: 0x3a5f3a,      // Dark green grass
-        ambientLightIntensity: 0.7,
-        directionalLightIntensity: 0.9,
+        backgroundColor: 0x9DD5F5,  // Softer pastel sky blue
+        groundColor: 0x5B8C5A,      // Softer pastel green grass
+        ambientLightIntensity: 0.5,
+        directionalLightIntensity: 1.2,
+        fillLightIntensity: 0.4,
         cameraFov: 45,
         cameraNear: 0.1,
-        cameraFar: 200
+        cameraFar: 200,
+        // Tone mapping for that soft pastel look
+        toneMapping: THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 1.3,
+        // Sky background image path (JPG is lighter than HDR)
+        skyImagePath: '/static/assets/kloofendal_48d_partly_cloudy_puresky_4k.jpg'
     };
 
     // ==================== PlaygroundScene3D Class ====================
@@ -81,23 +87,30 @@
             const width = container.clientWidth;
             const height = container.clientHeight;
 
-            // Create WebGL Renderer
+            // Create WebGL Renderer with enhanced quality
             this.renderer = new THREE.WebGLRenderer({
                 antialias: true,
-                alpha: false
+                alpha: false,
+                powerPreference: 'high-performance'
             });
             this.renderer.setSize(width, height);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             this.renderer.shadowMap.enabled = true;
             this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Enhanced rendering quality for pastel look
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = SCENE_CONFIG.toneMapping;
+            this.renderer.toneMappingExposure = SCENE_CONFIG.toneMappingExposure;
+
             container.appendChild(this.renderer.domElement);
 
             // Create Scene
             this.scene = new THREE.Scene();
             this.scene.background = new THREE.Color(SCENE_CONFIG.backgroundColor);
 
-            // Add fog for atmosphere - extended for larger city
-            this.scene.fog = new THREE.Fog(SCENE_CONFIG.backgroundColor, 40, 100);
+            // Add soft fog for dreamy atmosphere
+            this.scene.fog = new THREE.FogExp2(SCENE_CONFIG.backgroundColor, 0.012);
 
             // Setup camera
             this._setupCamera(width, height);
@@ -105,8 +118,8 @@
             // Setup lighting
             this._setupLighting();
 
-            // Create ground plane
-            this._createGround();
+            // Create thick platform for the city
+            this._createCityPlatform();
 
             // Initialize asset loader
             this.assetLoader = new window.Playground.Asset3DLoader();
@@ -167,46 +180,87 @@
         }
 
         _setupLighting() {
-            // Ambient light
-            const ambient = new THREE.AmbientLight(0xffffff, SCENE_CONFIG.ambientLightIntensity);
+            // Soft ambient light with warm tint
+            const ambient = new THREE.AmbientLight(0xFFF5E6, SCENE_CONFIG.ambientLightIntensity);
             this.scene.add(ambient);
 
-            // Main directional light (sun)
-            const sun = new THREE.DirectionalLight(0xfffaf0, SCENE_CONFIG.directionalLightIntensity);
-            sun.position.set(15, 25, 15);
+            // Main directional light (sun) - warm white
+            const sun = new THREE.DirectionalLight(0xFFFAF0, SCENE_CONFIG.directionalLightIntensity);
+            sun.position.set(20, 30, 15);
             sun.castShadow = true;
 
-            // Shadow settings
+            // Enhanced shadow settings for softer shadows
             sun.shadow.mapSize.width = 4096;
             sun.shadow.mapSize.height = 4096;
             sun.shadow.camera.near = 1;
-            sun.shadow.camera.far = 60;
-            sun.shadow.camera.left = -20;
-            sun.shadow.camera.right = 20;
-            sun.shadow.camera.top = 20;
-            sun.shadow.camera.bottom = -20;
-            sun.shadow.bias = -0.0005;
+            sun.shadow.camera.far = 80;
+            sun.shadow.camera.left = -30;
+            sun.shadow.camera.right = 30;
+            sun.shadow.camera.top = 30;
+            sun.shadow.camera.bottom = -30;
+            sun.shadow.bias = -0.0003;
+            sun.shadow.normalBias = 0.02;
+            sun.shadow.radius = 2;  // Soft shadow edges
 
             this.scene.add(sun);
+            this.sunLight = sun;
 
-            // Hemisphere light for sky/ground color
-            const hemi = new THREE.HemisphereLight(0x87CEEB, 0x3a5f3a, 0.3);
+            // Fill light from opposite side (cooler tone)
+            const fill = new THREE.DirectionalLight(0xE6F0FF, SCENE_CONFIG.fillLightIntensity);
+            fill.position.set(-15, 15, -10);
+            this.scene.add(fill);
+
+            // Hemisphere light for natural sky/ground bounce
+            const hemi = new THREE.HemisphereLight(0xB4D7FF, 0x80C080, 0.4);
             this.scene.add(hemi);
+
+            // Load sky background image
+            this._loadSkyBackground();
 
             debugLog('Lighting setup complete');
         }
 
+        _loadSkyBackground() {
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(
+                SCENE_CONFIG.skyImagePath,
+                (texture) => {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    this.scene.background = texture;
+                    this.scene.environment = texture;  // Also use for reflections
+                    debugLog('Sky background loaded');
+                },
+                undefined,
+                (err) => {
+                    debugLog('Sky background load failed:', err.message);
+                }
+            );
+        }
+
         _createGround() {
-            // Large ground plane for 21x21 city
-            const groundGeometry = new THREE.PlaneGeometry(60, 60);
-            const groundMaterial = new THREE.MeshLambertMaterial({
-                color: SCENE_CONFIG.groundColor
+            // Legacy - not used
+        }
+
+        _createCityPlatform() {
+            // Create a thick platform/island for the city to sit on
+            const platformWidth = 24;   // Slightly larger than 21x21 city
+            const platformDepth = 24;
+            const platformHeight = 2;   // Thick base
+
+            // Main platform box - positioned so top is at y=-0.02 (just below tiles)
+            const platformGeo = new THREE.BoxGeometry(platformWidth, platformHeight, platformDepth);
+            const platformMat = new THREE.MeshStandardMaterial({
+                color: 0x4A5568,  // Dark gray concrete look
+                roughness: 0.9,
+                metalness: 0.1
             });
-            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-            ground.rotation.x = -Math.PI / 2;
-            ground.position.set(10, -0.01, 10);  // Center of 21x21 city, slightly below zero
-            ground.receiveShadow = true;
-            this.scene.add(ground);
+            const platform = new THREE.Mesh(platformGeo, platformMat);
+            platform.position.set(10, -platformHeight / 2 - 0.02, 10);  // Top surface at y=-0.02
+            platform.receiveShadow = true;
+            platform.castShadow = true;
+            this.scene.add(platform);
+
+            debugLog('City platform created');
         }
 
         _buildCity() {
@@ -240,6 +294,7 @@
                 const model = this.assetLoader.getModel(tile.type, tile.name);
                 if (model) {
                     model.position.set(tile.gx, 0, tile.gz);
+                    model.rotation.y = tile.rotation || 0;
                     model.receiveShadow = true;
                     this.scene.add(model);
                     this.groundTiles.push(model);

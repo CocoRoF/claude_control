@@ -885,7 +885,7 @@
             // Add avatars for new sessions
             for (const session of sessions) {
                 if (!currentIds.has(session.session_id)) {
-                    const name = session.name || `Session ${session.session_id.substring(0, 8)}`;
+                    const name = session.session_name || `Session ${session.session_id.substring(0, 8)}`;
                     this.createAvatar(session.session_id, name);
                 }
             }

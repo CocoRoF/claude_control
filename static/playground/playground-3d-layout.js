@@ -40,29 +40,40 @@
     // 'L3' = Bend connecting North + West   ┐  (top-right corner)
     // 'L4' = Bend connecting North + East   ┌  (top-left corner)
     //
+    // === Minigolf Grass Tiles (with rotation indicator) ===
+    // 'C1' = Corner tile, rotation 0°    (grass edge at South+East, └ shape)
+    // 'C2' = Corner tile, rotation 90°   (grass edge at South+West, ┘ shape)
+    // 'C3' = Corner tile, rotation 180°  (grass edge at North+West, ┐ shape)
+    // 'C4' = Corner tile, rotation 270°  (grass edge at North+East, ┌ shape)
+    // 'S1' = Side tile, rotation 0°      (grass edge at North)
+    // 'S2' = Side tile, rotation 90°     (grass edge at East)
+    // 'S3' = Side tile, rotation 180°    (grass edge at South)
+    // 'S4' = Side tile, rotation 270°    (grass edge at West)
+    //
     // === Non-Road ===
     // 'B' = Building slot
     // 'P' = Park/nature area (large nature park)
     // 'G' = Green space / small garden
+    // 'M' = Market floor tile (checkered tile from mini-market)
     // '.' = Empty ground tile
 
     const CITY_GRID = [
         // Z=0 (back row)
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
         // Z=1
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=2 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=3
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=4
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=5 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=6
-        ['B', 'B', 'H', 'B', 'B', 'H', 'G', 'G', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'C3', 'C2', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=7
-        ['B', 'B', 'H', 'B', 'B', 'H', 'G', 'G', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'P', 'P', 'P', 'P', 'P', 'P'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'C4', 'C1', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
         // Z=8 (road row)
         ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R'],
         // Z=9
@@ -78,15 +89,15 @@
         // Z=14 (road row)
         ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R'],
         // Z=15
-        ['G', 'G', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['C3', 'C2', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
         // Z=16
-        ['G', 'G', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['C4', 'C1', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
         // Z=17 (road row)
         ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R'],
         // Z=18
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'G', 'G', 'G', 'G'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
         // Z=19
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'G', 'G', 'G', 'G'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
         // Z=20 (front row)
         ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R']
     ];
@@ -462,7 +473,7 @@
     // ==================== Pathfinding Grid ====================
     function generateWalkableMap() {
         const grid = [];
-        const roadTypes = ['R', 'H', '+', 'T', 'L', 'T1', 'T2', 'T3', 'T4', 'L1', 'L2', 'L3', 'L4', 'P', 'G'];
+        const roadTypes = ['R', 'H', '+', 'T', 'L', 'T1', 'T2', 'T3', 'T4', 'L1', 'L2', 'L3', 'L4', 'P', 'G', 'M', 'C1', 'C2', 'C3', 'C4', 'S1', 'S2', 'S3', 'S4'];
 
         for (let gz = 0; gz < CITY.DEPTH; gz++) {
             const row = [];
@@ -496,6 +507,30 @@
                 // Parks and gardens get beautiful minigolf grass tiles
                 else if (cell === 'P' || cell === 'G') {
                     tiles.push({ gx, gz, type: 'minigolf', name: 'open', isGround: true });
+                }
+                // Market floor tiles (checkered pattern)
+                else if (cell === 'M') {
+                    tiles.push({ gx, gz, type: 'market', name: 'floor', isGround: true });
+                }
+                // Minigolf corner tiles (C1-C4)
+                else if (cell === 'C1') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: 0, isGround: true });
+                } else if (cell === 'C2') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: Math.PI / 2, isGround: true });
+                } else if (cell === 'C3') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: Math.PI, isGround: true });
+                } else if (cell === 'C4') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: -Math.PI / 2, isGround: true });
+                }
+                // Minigolf side tiles (S1-S4)
+                else if (cell === 'S1') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: 0, isGround: true });
+                } else if (cell === 'S2') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: Math.PI / 2, isGround: true });
+                } else if (cell === 'S3') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: Math.PI, isGround: true });
+                } else if (cell === 'S4') {
+                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: -Math.PI / 2, isGround: true });
                 }
             }
         }
