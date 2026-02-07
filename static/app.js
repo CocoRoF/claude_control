@@ -290,6 +290,9 @@ async function executeCommand() {
 
     setExecutionStatus('running', 'Executing...');
 
+    // 캐릭터에게 작업 시작 알림
+    notifyCharacterRequestStart(state.selectedSessionId);
+
     try {
         const result = await apiCall(`/api/sessions/${state.selectedSessionId}/execute`, {
             method: 'POST',
@@ -314,6 +317,9 @@ async function executeCommand() {
             sessionData.output = output;
             sessionData.status = 'success';
             sessionData.statusText = statusText;
+
+            // 캐릭터에게 작업 완료 알림 (성공)
+            notifyCharacterRequestEnd(state.selectedSessionId, true);
         } else {
             setExecutionStatus('error', 'Failed');
             const output = result.error || 'Unknown error';
@@ -323,6 +329,9 @@ async function executeCommand() {
             sessionData.output = output;
             sessionData.status = 'error';
             sessionData.statusText = 'Failed';
+
+            // 캐릭터에게 작업 완료 알림 (실패)
+            notifyCharacterRequestEnd(state.selectedSessionId, false);
         }
     } catch (error) {
         setExecutionStatus('error', 'Error');
@@ -333,6 +342,9 @@ async function executeCommand() {
         sessionData.output = error.message;
         sessionData.status = 'error';
         sessionData.statusText = 'Error';
+
+        // 캐릭터에게 작업 완료 알림 (에러)
+        notifyCharacterRequestEnd(state.selectedSessionId, false);
     }
 }
 
@@ -649,6 +661,28 @@ function updateCompanyStatusOverlay() {
         html += `<div class="company-status-item"><span class="company-status-dot error"></span>${errors} error</div>`;
     }
     overlay.innerHTML = html;
+}
+
+/**
+ * 캐릭터에게 요청 시작 알림
+ */
+function notifyCharacterRequestStart(sessionId) {
+    if (!_companyInitialized) return;
+    const scene = window.CompanyView.getInstance();
+    if (scene && scene.isInitialized) {
+        scene.notifyRequestStart(sessionId);
+    }
+}
+
+/**
+ * 캐릭터에게 요청 완료 알림
+ */
+function notifyCharacterRequestEnd(sessionId, success) {
+    if (!_companyInitialized) return;
+    const scene = window.CompanyView.getInstance();
+    if (scene && scene.isInitialized) {
+        scene.notifyRequestEnd(sessionId, success);
+    }
 }
 
 function companyZoomIn() {

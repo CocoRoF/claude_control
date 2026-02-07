@@ -169,6 +169,50 @@ window.CompanyView = window.CompanyView || {};
             }
             return path;
         }
+
+        /** Find nearest walkable tile to (x, y) using BFS */
+        findNearestWalkable(x, y) {
+            // If already walkable, return it
+            if (this.grid.isWalkable(x, y)) {
+                return { x, y };
+            }
+
+            // BFS to find nearest walkable
+            const visited = new Set();
+            const queue = [{ x, y, dist: 0 }];
+            visited.add(`${x},${y}`);
+
+            const dirs = [
+                { x: 0, y: -1 }, { x: 1, y: 0 },
+                { x: 0, y: 1 }, { x: -1, y: 0 },
+                { x: 1, y: -1 }, { x: 1, y: 1 },
+                { x: -1, y: 1 }, { x: -1, y: -1 }
+            ];
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+
+                for (const dir of dirs) {
+                    const nx = current.x + dir.x;
+                    const ny = current.y + dir.y;
+                    const key = `${nx},${ny}`;
+
+                    if (visited.has(key)) continue;
+                    if (!this.grid.isInBounds(nx, ny)) continue;
+
+                    visited.add(key);
+
+                    if (this.grid.isWalkable(nx, ny)) {
+                        return { x: nx, y: ny };
+                    }
+
+                    queue.push({ x: nx, y: ny, dist: current.dist + 1 });
+                }
+            }
+
+            // No walkable tile found
+            return null;
+        }
     }
 
     // ==================== Export ====================

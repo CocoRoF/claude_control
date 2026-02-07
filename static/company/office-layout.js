@@ -1,6 +1,6 @@
 /**
- * Office Layout - Defines the room structure, furniture placement, and walkable areas
- * Acts as the level/map data for the isometric office
+ * Study Room Layout - Kenney Isometric Miniature 기반
+ * dungeon + library 에셋 조합으로 고풍스러운 스터디 룸 구현
  */
 window.CompanyView = window.CompanyView || {};
 
@@ -9,71 +9,145 @@ window.CompanyView = window.CompanyView || {};
 
     // ==================== Room Dimensions ====================
     const ROOM = {
-        WIDTH: 12,   // tiles
-        HEIGHT: 10,  // tiles
+        WIDTH: 8,   // tiles (gx 방향)
+        HEIGHT: 6,  // tiles (gy 방향)
     };
 
-    // ==================== Tile Types ====================
-    const TILE = {
-        FLOOR: 0,
-        CARPET: 1,
-        WALL: 2,
+    // ==================== Floor Configuration ====================
+    // 바닥 타일 타입 정의
+    const FLOOR_MAP = {
+        // 기본: 돌 바닥 (dungeon stone)
+        default: 'stone',
+        // 카펫 영역 (중앙)
+        carpet: [
+            { x: 3, y: 2 },
+            { x: 4, y: 2 },
+            { x: 3, y: 3 },
+            { x: 4, y: 3 },
+        ],
+    };
+
+    // ==================== Wall Configuration ====================
+    // 벽 스타일: 'stone' (dungeon) 사용
+    const WALLS = {
+        style: 'stone',
+        // 후면 벽 (gy=0, gx방향)
+        back: [
+
+            { gx: 1, type: 'straight', direction: 'S' },
+            { gx: 2, type: 'window', direction: 'S' },
+            { gx: 3, type: 'straight', direction: 'S' },
+            { gx: 4, type: 'window', direction: 'S' },
+            { gx: 5, type: 'straight', direction: 'S' },
+            { gx: 6, type: 'window', direction: 'S' },
+            { gx: 7, type: 'straight', direction: 'S' },
+        ],
+        // 좌측 벽 (gx=0, gy방향)
+        left: [
+            { gy: 0, type: 'corner', direction: 'S' },
+            { gy: 1, type: 'window', direction: 'E' },
+            { gy: 2, type: 'straight', direction: 'E' },
+            { gy: 3, type: 'archway', direction: 'E' }, // 입구
+            { gy: 4, type: 'straight', direction: 'E' },
+            { gy: 5, type: 'straight', direction: 'E' },
+        ],
     };
 
     // ==================== Furniture Definitions ====================
-    // Each furniture item: { type, gridX, gridY, variant?, facing? }
-    // 크기 표기법: W x H = gx방향(↘) x gy방향(↙)
+    // type: 가구 종류, asset: 에셋 키, gridX/Y: 그리드 위치
     const FURNITURE = [
-        // 중앙 회의 테이블 (5x3 크기: gx방향 5타일, gy방향 3타일)
-        // 카펫 영역 중앙에 배치
-        { type: 'conferenceTable', gridX: 3, gridY: 3 },
+        // === 후면 벽 책장 (gy=0 벽면) - 유지 ===
+        { type: 'bookcase', asset: 'glass_S', gridX: 0.2, gridY: 0 },
+        { type: 'bookcase', asset: 'glass_S', gridX: 0.75, gridY: 0 },
+        { type: 'bookcase', asset: 'glass_S', gridX: 1.30, gridY: 0 },
+        { type: 'bookcase', asset: 'wide_S', gridX: 3, gridY: 0 },
+        { type: 'bookcase', asset: 'wide_S', gridX: 5, gridY: 0 },
+        { type: 'bookcase', asset: 'booksLadder_S', gridX: 5.8, gridY: 0 },
+        { type: 'bookcase', asset: 'booksLadder_S', gridX: 6.35, gridY: 0 },
 
-        // 우상단 회의 테이블 쪽 의자 3개
-        // 테이블 상단 모서리(gy=3 라인) 바깥쪽에 배치, 테이블을 향해 앉음 (SW 방향)
-        // 테이블 gx 범위(3~8) 중앙부에 균등 배치
-        { type: 'chair', gridX: 3.5, gridY: 2.2, facing: 'SW' },
-        { type: 'chair', gridX: 5, gridY: 2.2, facing: 'SW' },
-        { type: 'chair', gridX: 6.5, gridY: 2.2, facing: 'SW' },
-        { type: 'chair', gridX: 2.3, gridY: 3.8, facing: 'SE' },
-        { type: 'chair', gridX: 7.6, gridY: 3.8, facing: 'NW' },
-        { type: 'chair', gridX: 3.5, gridY: 5.6, facing: 'NE' },
-        { type: 'chair', gridX: 5, gridY: 5.6, facing: 'NE' },
-        { type: 'chair', gridX: 6.5, gridY: 5.6, facing: 'NE' },
-        // 우상단 사이드 체어 (빨간색 오피스 체어)
-        { type: 'sideChair', gridX: 9.5, gridY: 1.5, facing: 'SW' },    ];
+        // === 좌측 벽 책장 (gx=0 벽면) - 유지 ===
+        { type: 'bookcase', asset: 'half_E', gridX: 0, gridY: 1.5 },
+        { type: 'bookcase', asset: 'glass_E', gridX: 0, gridY: 2.05 },
+
+        // === 중앙 작업 공간 (밀집 배치) ===
+        { type: 'table', asset: 'longDecoratedChairsBooks_S', gridX: 2.6, gridY: 2.5 },
+        { type: 'table', asset: 'longDecoratedChairs_S', gridX: 3.3, gridY: 2.5 },
+        { type: 'table', asset: 'longDecoratedChairsBooks_S', gridX: 4.0, gridY: 2.5 },
+        { type: 'table', asset: 'longDecoratedChairs_S', gridX: 4.7, gridY: 2.5 },
+        { type: 'table', asset: 'longDecoratedChairs_S', gridX: 2.6, gridY: 1.5 },
+        { type: 'table', asset: 'longDecoratedChairsBooks_S', gridX: 3.3, gridY: 1.5 },
+        { type: 'table', asset: 'longDecoratedChairs_S', gridX: 4.0, gridY: 1.5 },
+        { type: 'table', asset: 'longDecoratedChairsBooks_S', gridX: 4.7, gridY: 1.5 },
+
+        // === 회의실 구역 (좌측 벽면, gy=4~5) ===
+        { type: 'table', asset: 'roundChairs_E', gridX: 0.7, gridY: 3.85 },
+        { type: 'table', asset: 'roundChairs_E', gridX: 0.7, gridY: 4.85 },
+        { type: 'table', asset: 'roundChairs_E', gridX: 1.7, gridY: 3.85 },
+        { type: 'table', asset: 'roundChairs_E', gridX: 1.7, gridY: 4.85 },
+        { type: 'chair', asset: 'library_E', gridX: 0, gridY: 5 },
+        { type: 'chair', asset: 'library_E', gridX: 0, gridY: 5.25 },
+        { type: 'decor', asset: 'displayCaseBooks_E', gridX: 3, gridY: 4.12 },
+        { type: 'decor', asset: 'displayCaseBooks_E', gridX: 3, gridY: 4.90 },
+
+        // === 우측 하단 책장 ===
+        { type: 'bookcase', asset: 'wideDesk_E', gridX: 6, gridY: 3.7 },
+        { type: 'bookcase', asset: 'wideDesk_E', gridX: 6, gridY: 4.7 },
+    ];
 
     // ==================== Seat Positions ====================
-    // Positions where avatars can sit at workstations
-    // Aligned with workstation positions, slightly offset for sitting
+    // 아바타가 앉을 수 있는 위치
+    // facing: 'SE'=gx++, 'SW'=gy++, 'NW'=gx--, 'NE'=gy--
     const SEAT_POSITIONS = [
-        // Row 1
-        { gridX: 2, gridY: 2.5, workstationIdx: 0 },
-        { gridX: 4, gridY: 2.5, workstationIdx: 1 },
-        { gridX: 6, gridY: 2.5, workstationIdx: 2 },
-        { gridX: 8, gridY: 2.5, workstationIdx: 3 },
-        // Row 2
-        { gridX: 2, gridY: 4.5, workstationIdx: 4 },
-        { gridX: 4, gridY: 4.5, workstationIdx: 5 },
-        { gridX: 6, gridY: 4.5, workstationIdx: 6 },
-        { gridX: 8, gridY: 4.5, workstationIdx: 7 },
-        // Row 3
-        { gridX: 2, gridY: 6.5, workstationIdx: 8 },
-        { gridX: 4, gridY: 6.5, workstationIdx: 9 },
-        { gridX: 6, gridY: 6.5, workstationIdx: 10 },
-        { gridX: 8, gridY: 6.5, workstationIdx: 11 },
+        // === 중앙 작업 공간 - 뒷줄 테이블 (gridY: 1.5) ===
+        // 북쪽 의자 (테이블 위쪽, 남쪽을 바라봄)
+        { gridX: 2.6, gridY: 1.2, seatId: 'work1', facing: 'SW' },
+        { gridX: 3.3, gridY: 1.2, seatId: 'work2', facing: 'SW' },
+        { gridX: 4.0, gridY: 1.2, seatId: 'work3', facing: 'SW' },
+        { gridX: 4.7, gridY: 1.2, seatId: 'work4', facing: 'SW' },
+        // 남쪽 의자 (테이블 아래쪽, 북쪽을 바라봄)
+        { gridX: 2.6, gridY: 1.8, seatId: 'work5', facing: 'NE' },
+        { gridX: 3.3, gridY: 1.8, seatId: 'work6', facing: 'NE' },
+        { gridX: 4.0, gridY: 1.8, seatId: 'work7', facing: 'NE' },
+        { gridX: 4.7, gridY: 1.8, seatId: 'work8', facing: 'NE' },
+
+        // === 중앙 작업 공간 - 앞줄 테이블 (gridY: 2.5) ===
+        // 북쪽 의자 (테이블 위쪽, 남쪽을 바라봄)
+        { gridX: 2.6, gridY: 2.2, seatId: 'work9', facing: 'SW' },
+        { gridX: 3.3, gridY: 2.2, seatId: 'work10', facing: 'SW' },
+        { gridX: 4.0, gridY: 2.2, seatId: 'work11', facing: 'SW' },
+        { gridX: 4.7, gridY: 2.2, seatId: 'work12', facing: 'SW' },
+        // 남쪽 의자 (테이블 아래쪽, 북쪽을 바라봄)
+        { gridX: 2.6, gridY: 2.8, seatId: 'work13', facing: 'NE' },
+        { gridX: 3.3, gridY: 2.8, seatId: 'work14', facing: 'NE' },
+        { gridX: 4.0, gridY: 2.8, seatId: 'work15', facing: 'NE' },
+        { gridX: 4.7, gridY: 2.8, seatId: 'work16', facing: 'NE' },
+
+        // === 회의실 좌석 - 원형 테이블 주변 ===
+        // 테이블 (0.7, 3.85)
+        { gridX: 0.7, gridY: 3.85, seatId: 'meet1', facing: 'SW' },
+        // 테이블 (1.7, 3.85)
+        { gridX: 1.7, gridY: 3.85, seatId: 'meet2', facing: 'SW' },
+        // 테이블 (0.7, 4.85)
+        { gridX: 0.7, gridY: 4.85, seatId: 'meet3', facing: 'SW' },
+        // 테이블 (1.7, 4.85)
+        { gridX: 1.7, gridY: 4.85, seatId: 'meet4', facing: 'SW' },
     ];
 
     // ==================== Idle Positions ====================
-    // Where avatars go when not seated (lounge/wander spots)
+    // 대기 중인 아바타 위치
     const IDLE_POSITIONS = [
-        { gridX: 10, gridY: 3.5, label: 'corner1' },
-        { gridX: 10, gridY: 5, label: 'corner2' },
-        { gridX: 5, gridY: 8, label: 'hallway' },
-        { gridX: 3, gridY: 8, label: 'entrance' },
-        { gridX: 7, gridY: 8, label: 'lounge' },
-        { gridX: 1, gridY: 3, label: 'side1' },
-        { gridX: 1, gridY: 6, label: 'side2' },
+        { gridX: 2, gridY: 3, label: 'browsing' },
+        { gridX: 5.5, gridY: 4.5, label: 'walking' },
+        { gridX: 3, gridY: 5, label: 'entrance' },
     ];
+
+    // ==================== Carpet Area ====================
+    const CARPET_AREA = {
+        startX: 2.1,
+        startY: 1,
+        width: 0,
+        height: 0,
+    };
 
     // ==================== Walkability Map Generator ====================
     function generateWalkableMap() {
@@ -81,32 +155,17 @@ window.CompanyView = window.CompanyView || {};
         for (let y = 0; y < ROOM.HEIGHT; y++) {
             map[y] = [];
             for (let x = 0; x < ROOM.WIDTH; x++) {
-                // Default: walkable inside room, not on walls
-                map[y][x] = (x >= 1 && x < ROOM.WIDTH - 1 && y >= 1 && y < ROOM.HEIGHT);
+                // 벽 영역(y=0, x=0)과 가구 영역 제외하고 이동 가능
+                map[y][x] = (y >= 1 && x >= 1);
             }
         }
 
-        // Block furniture tiles (desks)
+        // 가구 영역 차단
         for (const f of FURNITURE) {
-            if (f.wallMount || f.onDesk) continue;
             const gx = Math.floor(f.gridX);
             const gy = Math.floor(f.gridY);
-
-            if (f.type === 'conferenceTable') {
-                // 5x3 회의 테이블 영역 블로킹 (gx방향 5, gy방향 3)
-                for (let dy = 0; dy < 3; dy++) {
-                    for (let dx = 0; dx < 5; dx++) {
-                        const tx = gx + dx;
-                        const ty = gy + dy;
-                        if (tx >= 0 && tx < ROOM.WIDTH && ty >= 0 && ty < ROOM.HEIGHT) {
-                            map[ty][tx] = false;
-                        }
-                    }
-                }
-            } else if (f.type === 'workstation') {
-                if (gx >= 0 && gx < ROOM.WIDTH && gy >= 0 && gy < ROOM.HEIGHT) {
-                    map[gy][gx] = false;
-                }
+            if (gx >= 0 && gx < ROOM.WIDTH && gy >= 0 && gy < ROOM.HEIGHT) {
+                map[gy][gx] = false;
             }
         }
 
@@ -116,10 +175,12 @@ window.CompanyView = window.CompanyView || {};
     // ==================== Export ====================
     window.CompanyView.Layout = {
         ROOM,
-        TILE,
+        FLOOR_MAP,
+        WALLS,
         FURNITURE,
         SEAT_POSITIONS,
         IDLE_POSITIONS,
+        CARPET_AREA,
         generateWalkableMap,
     };
 

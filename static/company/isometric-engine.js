@@ -8,9 +8,10 @@ window.CompanyView = window.CompanyView || {};
     'use strict';
 
     // ==================== Isometric Math ====================
+    // Kenney Isometric Miniature 에셋 기준 (256x512 이미지, 바닥 다이아몬드 256x128)
     const ISO = {
-        TILE_W: 64,
-        TILE_H: 32,
+        TILE_W: 256,
+        TILE_H: 128,
 
         /** Grid coordinate to screen pixel */
         gridToScreen(gx, gy) {
