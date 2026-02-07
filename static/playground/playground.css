@@ -1,7 +1,7 @@
-/* Company View - Isometric Office Styles */
+/* Playground View - 3D City Styles */
 
-/* ==================== Company Tab Container ==================== */
-.company-panel {
+/* ==================== Playground Tab Container ==================== */
+.playground-panel {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -12,7 +12,7 @@
 }
 
 /* ==================== Toolbar ==================== */
-.company-toolbar {
+.playground-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -24,19 +24,19 @@
     flex-shrink: 0;
 }
 
-.company-toolbar-left {
+.playground-toolbar-left {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.company-toolbar-right {
+.playground-toolbar-right {
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.company-title {
+.playground-title {
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-primary);
@@ -45,11 +45,11 @@
     gap: 8px;
 }
 
-.company-title-icon {
+.playground-title-icon {
     font-size: 1.1rem;
 }
 
-.company-session-count {
+.playground-session-count {
     font-size: 0.75rem;
     color: var(--text-muted);
     background: rgba(255, 255, 255, 0.06);
@@ -58,7 +58,7 @@
 }
 
 /* Toolbar Buttons */
-.company-btn {
+.playground-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -74,41 +74,41 @@
     padding: 0;
 }
 
-.company-btn:hover {
+.playground-btn:hover {
     background: rgba(255, 255, 255, 0.12);
     color: var(--text-primary);
     border-color: rgba(255, 255, 255, 0.15);
 }
 
-.company-btn:active {
+.playground-btn:active {
     transform: scale(0.95);
 }
 
-.company-btn svg {
+.playground-btn svg {
     width: 16px;
     height: 16px;
 }
 
 /* ==================== Canvas Container ==================== */
-.company-canvas-container {
+.playground-canvas-container {
     flex: 1;
     position: relative;
     overflow: hidden;
     cursor: grab;
 }
 
-.company-canvas-container:active {
+.playground-canvas-container:active {
     cursor: grabbing;
 }
 
-.company-canvas-container canvas {
+.playground-canvas-container canvas {
     display: block;
     width: 100% !important;
     height: 100% !important;
 }
 
 /* ==================== Status Overlay ==================== */
-.company-status-overlay {
+.playground-status-overlay {
     position: absolute;
     bottom: 12px;
     left: 12px;
@@ -119,7 +119,7 @@
     pointer-events: none;
 }
 
-.company-status-item {
+.playground-status-item {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -131,24 +131,24 @@
     backdrop-filter: blur(8px);
 }
 
-.company-status-dot {
+.playground-status-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
 }
 
-.company-status-dot.running {
+.playground-status-dot.running {
     background: var(--success-color);
     box-shadow: 0 0 6px var(--success-color);
     animation: pulse-dot 2s infinite;
 }
 
-.company-status-dot.idle {
+.playground-status-dot.idle {
     background: var(--text-muted);
 }
 
-.company-status-dot.error {
+.playground-status-dot.error {
     background: var(--error-color);
     box-shadow: 0 0 6px var(--error-color);
 }
@@ -159,7 +159,7 @@
 }
 
 /* ==================== Loading State ==================== */
-.company-loading {
+.playground-loading {
     position: absolute;
     inset: 0;
     display: flex;
@@ -171,12 +171,12 @@
     z-index: 20;
 }
 
-.company-loading-text {
+.playground-loading-text {
     font-size: 0.85rem;
     color: var(--text-secondary);
 }
 
-.company-loading-spinner {
+.playground-loading-spinner {
     width: 32px;
     height: 32px;
     border: 3px solid rgba(255, 255, 255, 0.1);
@@ -190,7 +190,7 @@
 }
 
 /* ==================== Empty State ==================== */
-.company-empty-state {
+.playground-empty-state {
     position: absolute;
     bottom: 16px;
     left: 50%;
@@ -200,7 +200,7 @@
     pointer-events: none;
 }
 
-.company-empty-text {
+.playground-empty-text {
     font-size: 0.8rem;
     color: var(--text-muted);
     background: rgba(0, 0, 0, 0.5);
@@ -210,7 +210,7 @@
 }
 
 /* ==================== Minimap (optional future) ==================== */
-.company-minimap {
+.playground-minimap {
     position: absolute;
     top: 12px;
     right: 12px;
@@ -226,21 +226,21 @@
 
 /* ==================== Responsive ==================== */
 @media (max-width: 768px) {
-    .company-toolbar {
+    .playground-toolbar {
         padding: 6px 10px;
     }
 
-    .company-title {
+    .playground-title {
         font-size: 0.8rem;
     }
 
-    .company-btn {
+    .playground-btn {
         width: 28px;
         height: 28px;
         font-size: 0.8rem;
     }
 
-    .company-session-count {
+    .playground-session-count {
         font-size: 0.65rem;
     }
 }

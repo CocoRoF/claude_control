@@ -566,7 +566,7 @@ function switchTab(tabName) {
     }
 
     // Initialize or sync playground view
-    if (tabName === 'company') {
+    if (tabName === 'playground') {
         initPlaygroundView();
     }
 }
@@ -582,13 +582,13 @@ function initPlaygroundView() {
         return;
     }
 
-    const container = document.getElementById('company-canvas');
-    const loading = document.getElementById('company-loading');
+    const container = document.getElementById('playground-canvas');
+    const loading = document.getElementById('playground-loading');
     if (!container) return;
 
     // Check if Three.js and Playground are loaded
     if (typeof THREE === 'undefined' || !window.Playground || !window.Playground.Scene) {
-        if (loading) loading.querySelector('.company-loading-text').textContent = 'Loading Three.js...';
+        if (loading) loading.querySelector('.playground-loading-text').textContent = 'Loading Three.js...';
         console.error('Three.js or Playground not loaded');
         return;
     }
@@ -614,7 +614,7 @@ function initPlaygroundView() {
         } catch (err) {
             console.error('Failed to init playground view:', err);
             if (loading) {
-                loading.querySelector('.company-loading-text').textContent = 'Failed to initialize';
+                loading.querySelector('.playground-loading-text').textContent = 'Failed to initialize';
             }
         }
     });
@@ -627,23 +627,23 @@ function syncPlaygroundSessions() {
         scene.syncSessions(state.sessions);
 
         // Update UI
-        const countEl = document.getElementById('company-session-count');
+        const countEl = document.getElementById('playground-session-count');
         if (countEl) {
-            countEl.textContent = `${state.sessions.length} worker${state.sessions.length !== 1 ? 's' : ''}`;
+            countEl.textContent = `${state.sessions.length} citizen${state.sessions.length !== 1 ? 's' : ''}`;
         }
 
-        const emptyState = document.getElementById('company-empty-state');
+        const emptyState = document.getElementById('playground-empty-state');;
         if (emptyState) {
             emptyState.style.display = state.sessions.length === 0 ? 'block' : 'none';
         }
 
         // Update status overlay
-        updateCompanyStatusOverlay();
+        updatePlaygroundStatusOverlay();
     }
 }
 
-function updateCompanyStatusOverlay() {
-    const overlay = document.getElementById('company-status-overlay');
+function updatePlaygroundStatusOverlay() {
+    const overlay = document.getElementById('playground-status-overlay');
     if (!overlay) return;
 
     const running = state.sessions.filter(s => s.status === 'running').length;
@@ -652,13 +652,13 @@ function updateCompanyStatusOverlay() {
 
     let html = '';
     if (running > 0) {
-        html += `<div class="company-status-item"><span class="company-status-dot running"></span>${running} working</div>`;
+        html += `<div class="playground-status-item"><span class="playground-status-dot running"></span>${running} working</div>`;
     }
     if (idle > 0) {
-        html += `<div class="company-status-item"><span class="company-status-dot idle"></span>${idle} idle</div>`;
+        html += `<div class="playground-status-item"><span class="playground-status-dot idle"></span>${idle} idle</div>`;
     }
     if (errors > 0) {
-        html += `<div class="company-status-item"><span class="company-status-dot error"></span>${errors} error</div>`;
+        html += `<div class="playground-status-item"><span class="playground-status-dot error"></span>${errors} error</div>`;
     }
     overlay.innerHTML = html;
 }
@@ -685,17 +685,17 @@ function notifyCharacterRequestEnd(sessionId, success) {
     }
 }
 
-function companyZoomIn() {
+function playgroundZoomIn() {
     const scene = window.Playground.Scene;
     if (scene) scene.zoomIn();
 }
 
-function companyZoomOut() {
+function playgroundZoomOut() {
     const scene = window.Playground.Scene;
     if (scene) scene.zoomOut();
 }
 
-function companyResetView() {
+function playgroundResetView() {
     const scene = window.Playground.Scene;
     if (scene) scene.resetView();
 }
