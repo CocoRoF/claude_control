@@ -471,6 +471,15 @@
             }
         }
 
+        notifyRequestEnd(sessionId, success) {
+            debugLog(`Request ended for ${sessionId.substring(0, 8)}: ${success ? 'success' : 'failed'}`);
+
+            // Mark avatar as done processing
+            if (this.avatarSystem) {
+                this.avatarSystem.setProcessing(sessionId, false);
+            }
+        }
+
         zoomIn() {
             this.cameraDistance = Math.max(8, this.cameraDistance * 0.8);
             this._updateCameraPosition();

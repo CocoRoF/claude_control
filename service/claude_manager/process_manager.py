@@ -145,7 +145,7 @@ def find_claude_executable() -> Optional[str]:
     if IS_WINDOWS:
         # On Windows, prioritize finding .cmd/.bat files explicitly
         # because shutil.which may return path without extension
-        
+
         # First, check for explicit .cmd (most common for npm global installs)
         for ext in ['.cmd', '.bat', '.exe']:
             claude_path = shutil.which(f"claude{ext}")
@@ -224,7 +224,7 @@ def _build_shell_command(executable: str, args: List[str]) -> Tuple[str, List[st
             # Check if this is actually a .cmd file (common for npm)
             cmd_path = executable + '.cmd'
             bat_path = executable + '.bat'
-            
+
             if Path(cmd_path).exists():
                 logger.debug(f"Detected {executable} is actually {cmd_path}")
                 executable = cmd_path
@@ -272,6 +272,53 @@ def _build_shell_command(executable: str, args: List[str]) -> Tuple[str, List[st
         return (executable, full_args, False)
 
 
+class WindowsProcessWrapper:
+    """
+    Wrapper class that provides asyncio.subprocess.Process-like interface
+    for subprocess.Popen on Windows. This avoids the NotImplementedError
+    that occurs when uvicorn uses SelectorEventLoop instead of ProactorEventLoop.
+    """
+
+    def __init__(self, popen: 'subprocess.Popen'):
+        self._popen = popen
+
+    @property
+    def pid(self) -> int:
+        return self._popen.pid
+
+    @property
+    def returncode(self) -> Optional[int]:
+        return self._popen.returncode
+
+    async def communicate(self, input: Optional[bytes] = None) -> Tuple[bytes, bytes]:
+        """Async wrapper around Popen.communicate()"""
+        import subprocess as sp
+
+        def _communicate():
+            return self._popen.communicate(input=input)
+
+        return await asyncio.to_thread(_communicate)
+
+    async def wait(self) -> int:
+        """Async wrapper around Popen.wait()"""
+        def _wait():
+            return self._popen.wait()
+
+        return await asyncio.to_thread(_wait)
+
+    def terminate(self):
+        """Terminate the process"""
+        self._popen.terminate()
+
+    def kill(self):
+        """Kill the process"""
+        self._popen.kill()
+
+    def send_signal(self, sig):
+        """Send a signal to the process"""
+        self._popen.send_signal(sig)
+
+
 async def create_subprocess_cross_platform(
     cmd: List[str],
     stdin: Optional[int] = None,
@@ -280,15 +327,16 @@ async def create_subprocess_cross_platform(
     env: Optional[Dict[str, str]] = None,
     cwd: Optional[str] = None,
     limit: int = STDIO_BUFFER_LIMIT
-) -> asyncio.subprocess.Process:
+):
     """
     Create a subprocess in a cross-platform compatible way.
 
     This function handles the following platform-specific issues:
+    - Windows: Uses subprocess.Popen wrapped for async (avoids ProactorEventLoop requirement)
     - Windows: .cmd/.bat files cannot be executed directly by CreateProcess
     - Windows: Need to properly escape/quote arguments
     - Windows: Prevent console window popups for background processes
-    - Unix: Standard subprocess execution
+    - Unix: Standard asyncio subprocess execution
 
     Args:
         cmd: Command and arguments as a list. First element is the executable.
@@ -297,14 +345,16 @@ async def create_subprocess_cross_platform(
         stderr: stderr handling
         env: Environment variables dictionary
         cwd: Working directory path
-        limit: Buffer limit for stdio pipes
+        limit: Buffer limit for stdio pipes (only used on Unix)
 
     Returns:
-        The created asyncio subprocess.
+        The created subprocess (WindowsProcessWrapper on Windows, asyncio.subprocess.Process on Unix).
 
     Raises:
         OSError: If the subprocess cannot be created.
     """
+    import subprocess as sp
+
     if not cmd:
         raise ValueError("Command list cannot be empty")
 
@@ -318,37 +368,39 @@ async def create_subprocess_cross_platform(
 
     try:
         if IS_WINDOWS:
-            # Windows-specific subprocess creation
-            # We use subprocess.Popen kwargs that are passed through
-            import subprocess as sp
+            # Windows: Use subprocess.Popen directly and wrap for async
+            # This avoids the NotImplementedError when ProactorEventLoop is not used
 
-            # Prepare Windows-specific kwargs
-            # Note: asyncio.create_subprocess_exec passes kwargs to subprocess.Popen
-            kwargs = {
-                'stdin': stdin,
-                'stdout': stdout,
-                'stderr': stderr,
-                'env': env,
-                'cwd': cwd,
-                'limit': limit,
-            }
+            # Map asyncio.subprocess constants to subprocess constants
+            stdin_arg = sp.PIPE if stdin == asyncio.subprocess.PIPE else stdin
+            stdout_arg = sp.PIPE if stdout == asyncio.subprocess.PIPE else stdout
+            stderr_arg = sp.PIPE if stderr == asyncio.subprocess.PIPE else stderr
 
             # CREATE_NO_WINDOW (0x08000000) prevents console window popup
-            # This is crucial for running as a service or background process
-            kwargs['creationflags'] = sp.CREATE_NO_WINDOW
+            creationflags = sp.CREATE_NO_WINDOW
 
             # STARTUPINFO to hide window
             startupinfo = sp.STARTUPINFO()
             startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = sp.SW_HIDE
-            kwargs['startupinfo'] = startupinfo
 
-            process = await asyncio.create_subprocess_exec(
-                *full_cmd,
-                **kwargs
+            # Create process synchronously (Popen doesn't block)
+            popen = sp.Popen(
+                full_cmd,
+                stdin=stdin_arg,
+                stdout=stdout_arg,
+                stderr=stderr_arg,
+                env=env,
+                cwd=cwd,
+                creationflags=creationflags,
+                startupinfo=startupinfo
             )
+
+            process = WindowsProcessWrapper(popen)
+            logger.debug(f"Windows subprocess created with PID: {process.pid}")
+            return process
         else:
-            # Unix-like systems: straightforward execution
+            # Unix-like systems: use asyncio subprocess directly
             process = await asyncio.create_subprocess_exec(
                 *full_cmd,
                 stdin=stdin,
@@ -358,9 +410,8 @@ async def create_subprocess_cross_platform(
                 cwd=cwd,
                 limit=limit
             )
-
-        logger.debug(f"Subprocess created with PID: {process.pid}")
-        return process
+            logger.debug(f"Unix subprocess created with PID: {process.pid}")
+            return process
 
     except FileNotFoundError as e:
         logger.error(f"Executable not found: {shell_exec} (full cmd: {full_cmd[:2]})")
@@ -371,7 +422,7 @@ async def create_subprocess_cross_platform(
     except OSError as e:
         # WinError 193 = "%1 is not a valid Win32 application"
         # This happens when trying to run a batch file directly
-        if IS_WINDOWS and e.winerror == 193:
+        if IS_WINDOWS and hasattr(e, 'winerror') and e.winerror == 193:
             logger.error(
                 f"OSError 193: Cannot execute {executable} directly. "
                 f"This is typically a batch script that needs cmd.exe wrapper. "
