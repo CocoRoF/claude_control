@@ -282,6 +282,7 @@ window.CompanyView = window.CompanyView || {};
 
         _placeFurniture() {
             const ConferenceTable = window.CompanyView.ConferenceTable;
+            const ChairAssets = window.CompanyView.ChairAssets;
 
             // 가구 배치
             for (const furniture of Layout.FURNITURE) {
@@ -291,6 +292,13 @@ window.CompanyView = window.CompanyView || {};
                         furniture.gridY
                     );
                     this.objectLayer.addChild(table);
+                } else if (furniture.type === 'chair') {
+                    const chair = ChairAssets.createChair(
+                        furniture.gridX,
+                        furniture.gridY,
+                        furniture.facing || 'SW'
+                    );
+                    this.objectLayer.addChild(chair);
                 }
             }
 

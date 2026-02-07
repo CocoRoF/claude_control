@@ -27,6 +27,13 @@ window.CompanyView = window.CompanyView || {};
         // 중앙 회의 테이블 (5x3 크기: gx방향 5타일, gy방향 3타일)
         // 카펫 영역 중앙에 배치
         { type: 'conferenceTable', gridX: 3, gridY: 3 },
+
+        // 우상단 회의 테이블 쪽 의자 3개
+        // 테이블 상단 모서리(gy=3 라인) 바깥쪽에 배치, 테이블을 향해 앉음 (SW 방향)
+        // 테이블 gx 범위(3~8) 중앙부에 균등 배치
+        { type: 'chair', gridX: 3.5, gridY: 2.2, facing: 'SW' },
+        { type: 'chair', gridX: 5, gridY: 2.2, facing: 'SW' },
+        { type: 'chair', gridX: 6.5, gridY: 2.2, facing: 'SW' },
     ];
 
     // ==================== Seat Positions ====================
