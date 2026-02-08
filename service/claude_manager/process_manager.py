@@ -8,440 +8,32 @@ import asyncio
 import json
 import logging
 import os
-import platform
-import signal
+import re
 import shutil
-import sys
-import tempfile
 from pathlib import Path
-from typing import Optional, Dict, List, Any, Tuple, TYPE_CHECKING
+from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 from service.claude_manager.models import SessionStatus, MCPConfig
+from service.claude_manager.constants import CLAUDE_DEFAULT_TIMEOUT, STDIO_BUFFER_LIMIT
+from service.claude_manager.platform_utils import (
+    IS_WINDOWS,
+    DEFAULT_STORAGE_ROOT,
+    get_claude_env_vars,
+    create_subprocess_cross_platform,
+)
+from service.claude_manager.cli_discovery import (
+    ClaudeNodeConfig,
+    find_claude_node_config,
+    build_direct_node_command,
+)
+from service.claude_manager.storage_utils import (
+    list_storage_files as _list_storage_files,
+    read_storage_file as _read_storage_file,
+)
 from service.utils.utils import now_kst
 
-if TYPE_CHECKING:
-    from service.claude_manager.models import MCPConfig
-
 logger = logging.getLogger(__name__)
-
-# Buffer limit: 16MB
-STDIO_BUFFER_LIMIT = 16 * 1024 * 1024
-
-# Claude execution timeout (default 5 minutes)
-CLAUDE_DEFAULT_TIMEOUT = 1800
-
-# Platform detection
-IS_WINDOWS = platform.system() == 'Windows'
-IS_MACOS = platform.system() == 'Darwin'
-IS_LINUX = platform.system() == 'Linux'
-
-# Default storage root path (cross-platform)
-def _get_default_storage_root() -> str:
-    """Get platform-appropriate default storage root."""
-    env_storage = os.environ.get('CLAUDE_STORAGE_ROOT')
-    if env_storage:
-        return env_storage
-
-    # Use platform-appropriate temp directory
-    if IS_WINDOWS:
-        # On Windows, use LOCALAPPDATA or TEMP
-        base = os.environ.get('LOCALAPPDATA') or tempfile.gettempdir()
-        return str(Path(base) / 'claude_sessions')
-    elif IS_MACOS:
-        # On macOS, use ~/Library/Application Support or /tmp
-        app_support = Path.home() / 'Library' / 'Application Support' / 'claude_sessions'
-        try:
-            app_support.mkdir(parents=True, exist_ok=True)
-            return str(app_support)
-        except (PermissionError, OSError):
-            return '/tmp/claude_sessions'
-    else:
-        # On Linux and other Unix-like systems, use /tmp
-        return '/tmp/claude_sessions'
-
-DEFAULT_STORAGE_ROOT = _get_default_storage_root()
-
-# Claude Code environment variable keys (automatically passed to sessions)
-CLAUDE_ENV_KEYS = [
-    # Anthropic API
-    'ANTHROPIC_API_KEY',
-    'ANTHROPIC_AUTH_TOKEN',
-    'ANTHROPIC_MODEL',
-    'ANTHROPIC_DEFAULT_SONNET_MODEL',
-    'ANTHROPIC_DEFAULT_OPUS_MODEL',
-    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-
-    # Claude Code settings
-    'MAX_THINKING_TOKENS',
-    'BASH_DEFAULT_TIMEOUT_MS',
-    'BASH_MAX_TIMEOUT_MS',
-    'BASH_MAX_OUTPUT_LENGTH',
-
-    # Disable options
-    'DISABLE_AUTOUPDATER',
-    'DISABLE_ERROR_REPORTING',
-    'DISABLE_TELEMETRY',
-    'DISABLE_COST_WARNINGS',
-    'DISABLE_PROMPT_CACHING',
-
-    # Proxy settings
-    'HTTP_PROXY',
-    'HTTPS_PROXY',
-    'NO_PROXY',
-
-    # AWS Bedrock
-    'CLAUDE_CODE_USE_BEDROCK',
-    'AWS_REGION',
-    'AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY',
-    'AWS_BEARER_TOKEN_BEDROCK',
-
-    # Google Vertex AI
-    'CLAUDE_CODE_USE_VERTEX',
-    'GOOGLE_CLOUD_PROJECT',
-    'GOOGLE_CLOUD_REGION',
-
-    # Microsoft Foundry
-    'CLAUDE_CODE_USE_FOUNDRY',
-    'ANTHROPIC_FOUNDRY_API_KEY',
-    'ANTHROPIC_FOUNDRY_BASE_URL',
-    'ANTHROPIC_FOUNDRY_RESOURCE',
-
-    # GitHub (for git push, PR creation)
-    'GITHUB_TOKEN',
-    'GH_TOKEN',
-    'GITHUB_USERNAME',
-]
-
-
-def get_claude_env_vars() -> Dict[str, str]:
-    """
-    Collect environment variables required for Claude Code execution.
-
-    Returns:
-        Dictionary of environment variables to pass to Claude Code.
-    """
-    env_vars = {}
-    for key in CLAUDE_ENV_KEYS:
-        value = os.environ.get(key)
-        if value:
-            env_vars[key] = value
-    return env_vars
-
-
-class ClaudeNodeConfig:
-    """
-    Configuration for direct Node.js execution of Claude CLI.
-
-    This bypasses cmd.exe/PowerShell entirely on Windows,
-    avoiding command line length limits and escaping issues.
-    """
-    def __init__(self, node_path: str, cli_js_path: str, base_dir: str):
-        self.node_path = node_path
-        self.cli_js_path = cli_js_path
-        self.base_dir = base_dir
-
-    def __repr__(self):
-        return f"ClaudeNodeConfig(node='{self.node_path}', cli='{self.cli_js_path}')"
-
-
-def find_claude_node_config() -> Optional[ClaudeNodeConfig]:
-    """
-    Find Node.js and Claude CLI JavaScript file paths for direct execution.
-
-    This completely bypasses cmd.exe/PowerShell on Windows by finding:
-    1. node.exe path
-    2. @anthropic-ai/claude-code/cli.js path
-
-    Returns:
-        ClaudeNodeConfig with paths, or None if not found.
-    """
-    node_path = None
-    cli_js_path = None
-    base_dir = None
-
-    if IS_WINDOWS:
-        # Strategy 1: Find claude.cmd and parse it to get paths
-        claude_cmd_paths = []
-
-        # Check common npm global installation paths
-        for ext in ['.cmd', '.ps1', '']:
-            found = shutil.which(f"claude{ext}")
-            if found:
-                claude_cmd_paths.append(Path(found))
-
-        # Additional common paths
-        appdata = os.environ.get('APPDATA')
-        if appdata:
-            claude_cmd_paths.append(Path(appdata) / 'npm' / 'claude.cmd')
-        claude_cmd_paths.append(Path.home() / 'AppData' / 'Roaming' / 'npm' / 'claude.cmd')
-
-        # nvm4w common paths
-        nvm_paths = [
-            Path('C:/nvm4w/nodejs'),
-            Path('C:/Program Files/nodejs'),
-            Path.home() / 'AppData' / 'Local' / 'nvm',
-        ]
-        for nvm_path in nvm_paths:
-            if nvm_path.exists():
-                claude_cmd_paths.append(nvm_path / 'claude.cmd')
-
-        # Find the first existing claude.cmd and derive paths
-        for cmd_path in claude_cmd_paths:
-            if cmd_path.exists():
-                base_dir = cmd_path.parent
-                potential_node = base_dir / 'node.exe'
-                potential_cli = base_dir / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js'
-
-                if potential_cli.exists():
-                    # Found cli.js, now find node
-                    cli_js_path = str(potential_cli)
-
-                    if potential_node.exists():
-                        node_path = str(potential_node)
-                    else:
-                        # Use node from PATH
-                        node_path = shutil.which('node') or shutil.which('node.exe')
-
-                    if node_path and cli_js_path:
-                        logger.info(f"Found Claude via cmd wrapper: node={node_path}, cli={cli_js_path}")
-                        return ClaudeNodeConfig(node_path, cli_js_path, str(base_dir))
-
-        # Strategy 2: Direct search for cli.js in common npm locations
-        npm_module_paths = []
-        if appdata:
-            npm_module_paths.append(Path(appdata) / 'npm' / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js')
-
-        for nvm_path in nvm_paths:
-            npm_module_paths.append(nvm_path / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js')
-
-        for cli_path in npm_module_paths:
-            if cli_path.exists():
-                cli_js_path = str(cli_path)
-                base_dir = str(cli_path.parent.parent.parent.parent)  # up to npm root
-                node_path = shutil.which('node') or shutil.which('node.exe')
-
-                if node_path:
-                    logger.info(f"Found Claude via direct search: node={node_path}, cli={cli_js_path}")
-                    return ClaudeNodeConfig(node_path, cli_js_path, base_dir)
-
-    else:
-        # Unix-like systems: find claude binary and derive cli.js path
-        claude_path = shutil.which('claude')
-
-        if claude_path:
-            # Read the shebang/script to find cli.js
-            claude_path = Path(claude_path).resolve()
-
-            # Common cli.js locations relative to claude binary
-            possible_cli_paths = [
-                claude_path.parent / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js',
-                claude_path.parent.parent / 'lib' / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js',
-                Path.home() / '.npm-global' / 'lib' / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js',
-                Path('/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js'),
-                Path('/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js'),
-            ]
-
-            for cli_path in possible_cli_paths:
-                if cli_path.exists():
-                    cli_js_path = str(cli_path)
-                    base_dir = str(cli_path.parent.parent.parent.parent)
-                    node_path = shutil.which('node')
-
-                    if node_path:
-                        logger.info(f"Found Claude on Unix: node={node_path}, cli={cli_js_path}")
-                        return ClaudeNodeConfig(node_path, cli_js_path, base_dir)
-
-        # Fallback: just use 'claude' command directly (for compatibility)
-        if claude_path:
-            node_path = shutil.which('node')
-            if node_path:
-                # Return with claude_path as cli.js - will be handled specially
-                logger.info(f"Falling back to claude binary: {claude_path}")
-                return ClaudeNodeConfig(node_path, str(claude_path), str(claude_path.parent))
-
-    logger.warning("Claude CLI (Node.js configuration) not found")
-    return None
-
-
-# Legacy function for backward compatibility
-def find_claude_executable() -> Optional[str]:
-    """
-    Find the Claude CLI executable path (legacy, for compatibility).
-
-    Use find_claude_node_config() for new code.
-    """
-    config = find_claude_node_config()
-    if config:
-        if IS_WINDOWS:
-            return config.node_path  # Return node.exe on Windows
-        else:
-            return shutil.which('claude')  # Return claude binary on Unix
-    return None
-
-
-def _build_direct_node_command(config: ClaudeNodeConfig, args: List[str]) -> List[str]:
-    """
-    Build command for direct Node.js execution (bypasses cmd.exe/PowerShell entirely).
-
-    Args:
-        config: ClaudeNodeConfig with node and cli.js paths.
-        args: Claude CLI arguments.
-
-    Returns:
-        List of command arguments starting with node.exe.
-    """
-    # Direct execution: node.exe cli.js [args...]
-    # No cmd.exe, no PowerShell, no shell escaping issues
-    return [config.node_path, config.cli_js_path] + args
-
-
-class WindowsProcessWrapper:
-    """
-    Wrapper class that provides asyncio.subprocess.Process-like interface
-    for subprocess.Popen on Windows. This avoids the NotImplementedError
-    that occurs when uvicorn uses SelectorEventLoop instead of ProactorEventLoop.
-    """
-
-    def __init__(self, popen: 'subprocess.Popen'):
-        self._popen = popen
-
-    @property
-    def pid(self) -> int:
-        return self._popen.pid
-
-    @property
-    def returncode(self) -> Optional[int]:
-        return self._popen.returncode
-
-    async def communicate(self, input: Optional[bytes] = None) -> Tuple[bytes, bytes]:
-        """Async wrapper around Popen.communicate()"""
-        import subprocess as sp
-
-        def _communicate():
-            return self._popen.communicate(input=input)
-
-        return await asyncio.to_thread(_communicate)
-
-    async def wait(self) -> int:
-        """Async wrapper around Popen.wait()"""
-        def _wait():
-            return self._popen.wait()
-
-        return await asyncio.to_thread(_wait)
-
-    def terminate(self):
-        """Terminate the process"""
-        self._popen.terminate()
-
-    def kill(self):
-        """Kill the process"""
-        self._popen.kill()
-
-    def send_signal(self, sig):
-        """Send a signal to the process"""
-        self._popen.send_signal(sig)
-
-
-async def create_subprocess_cross_platform(
-    cmd: List[str],
-    stdin: Optional[int] = None,
-    stdout: Optional[int] = None,
-    stderr: Optional[int] = None,
-    env: Optional[Dict[str, str]] = None,
-    cwd: Optional[str] = None,
-    limit: int = STDIO_BUFFER_LIMIT
-):
-    """
-    Create a subprocess in a cross-platform compatible way.
-
-    IMPORTANT: On Windows, caller must provide direct executable commands
-    (e.g., node.exe with arguments), NOT batch files (.cmd/.bat).
-    This function does NOT wrap commands with cmd.exe or PowerShell.
-
-    Args:
-        cmd: Command and arguments as a list. First element must be a direct executable.
-        stdin: stdin handling (e.g., asyncio.subprocess.PIPE or None)
-        stdout: stdout handling
-        stderr: stderr handling
-        env: Environment variables dictionary
-        cwd: Working directory path
-        limit: Buffer limit for stdio pipes (only used on Unix)
-
-    Returns:
-        The created subprocess (WindowsProcessWrapper on Windows, asyncio.subprocess.Process on Unix).
-
-    Raises:
-        OSError: If the subprocess cannot be created.
-    """
-    import subprocess as sp
-
-    if not cmd:
-        raise ValueError("Command list cannot be empty")
-
-    logger.debug(f"Platform: {platform.system()}, Command: {cmd[:4]}...")
-
-    try:
-        if IS_WINDOWS:
-            # Windows: Use subprocess.Popen directly with node.exe
-            # No cmd.exe wrapper - direct execution only
-
-            # Map asyncio.subprocess constants to subprocess constants
-            stdin_arg = sp.PIPE if stdin == asyncio.subprocess.PIPE else stdin
-            stdout_arg = sp.PIPE if stdout == asyncio.subprocess.PIPE else stdout
-            stderr_arg = sp.PIPE if stderr == asyncio.subprocess.PIPE else stderr
-
-            # CREATE_NO_WINDOW (0x08000000) prevents console window popup
-            creationflags = sp.CREATE_NO_WINDOW
-
-            # STARTUPINFO to hide window
-            startupinfo = sp.STARTUPINFO()
-            startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = sp.SW_HIDE
-
-            # Create process synchronously (Popen doesn't block)
-            popen = sp.Popen(
-                cmd,
-                stdin=stdin_arg,
-                stdout=stdout_arg,
-                stderr=stderr_arg,
-                env=env,
-                cwd=cwd,
-                creationflags=creationflags,
-                startupinfo=startupinfo
-            )
-
-            process = WindowsProcessWrapper(popen)
-            logger.debug(f"Windows subprocess created with PID: {process.pid}")
-            return process
-        else:
-            # Unix-like systems: use asyncio subprocess directly
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=stdin,
-                stdout=stdout,
-                stderr=stderr,
-                env=env,
-                cwd=cwd,
-                limit=limit
-            )
-            logger.debug(f"Unix subprocess created with PID: {process.pid}")
-            return process
-
-    except FileNotFoundError as e:
-        logger.error(f"Executable not found: {cmd[0]}")
-        raise
-    except PermissionError as e:
-        logger.error(f"Permission denied executing: {cmd[0]}")
-        raise
-    except OSError as e:
-        if IS_WINDOWS and hasattr(e, 'winerror') and e.winerror == 193:
-            logger.error(
-                f"OSError 193: Cannot execute {cmd[0]} directly. "
-                f"Ensure you are passing a direct executable (e.g., node.exe), not a script."
-            )
-        raise
 
 
 class ClaudeProcess:
@@ -465,7 +57,9 @@ class ClaudeProcess:
         mcp_config: Optional[MCPConfig] = None,
         system_prompt: Optional[str] = None,
         autonomous: Optional[bool] = True,
-        autonomous_max_iterations: Optional[int] = 100
+        autonomous_max_iterations: Optional[int] = 100,
+        role: Optional[str] = "worker",
+        manager_id: Optional[str] = None
     ):
         self.session_id = session_id
         self.session_name = session_name
@@ -480,11 +74,21 @@ class ClaudeProcess:
         self.autonomous = autonomous if autonomous is not None else True
         self.autonomous_max_iterations = autonomous_max_iterations or 100
 
+        # Role settings for hierarchical management
+        self.role = role or "worker"
+        self.manager_id = manager_id
+
         # Autonomous execution state
         self._original_request: Optional[str] = None
         self._autonomous_iteration: int = 0
         self._autonomous_running: bool = False
         self._autonomous_stop_requested: bool = False
+
+        # Worker execution state (for manager tracking)
+        self._is_busy: bool = False
+        self._current_task: Optional[str] = None
+        self._last_output: Optional[str] = None
+        self._last_activity: Optional[datetime] = None
 
         # Storage configuration (using Path for cross-platform compatibility)
         self._storage_root = storage_root or DEFAULT_STORAGE_ROOT
@@ -521,6 +125,43 @@ class ClaudeProcess:
         if self._current_process:
             return self._current_process.pid
         return None
+
+    # Worker state properties for manager tracking
+    @property
+    def is_busy(self) -> bool:
+        """Whether worker is currently executing a task."""
+        return self._is_busy
+
+    @is_busy.setter
+    def is_busy(self, value: bool):
+        self._is_busy = value
+
+    @property
+    def current_task(self) -> Optional[str]:
+        """Current task description (for workers)."""
+        return self._current_task
+
+    @current_task.setter
+    def current_task(self, value: Optional[str]):
+        self._current_task = value
+
+    @property
+    def last_output(self) -> Optional[str]:
+        """Last execution output (for workers)."""
+        return self._last_output
+
+    @last_output.setter
+    def last_output(self, value: Optional[str]):
+        self._last_output = value
+
+    @property
+    def last_activity(self) -> Optional[datetime]:
+        """Last activity timestamp (for workers)."""
+        return self._last_activity
+
+    @last_activity.setter
+    def last_activity(self, value: Optional[datetime]):
+        self._last_activity = value
 
     async def initialize(self) -> bool:
         """
@@ -560,6 +201,7 @@ class ClaudeProcess:
             self._node_config = node_config
 
             # Log the found paths with platform info
+            import platform
             logger.info(f"[{self.session_id}] Claude CLI config: {node_config}")
             logger.info(f"[{self.session_id}] Platform: {platform.system()} ({platform.machine()})")
 
@@ -645,7 +287,7 @@ class ClaudeProcess:
                         "error": "Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
                     }
 
-                # Build base arguments (without node.exe and cli.js - those are added by _build_direct_node_command)
+                # Build base arguments (without node.exe and cli.js - those are added by build_direct_node_command)
                 args = ["--print", "--verbose"]
 
                 # Resume previous conversation if we have a Claude CLI session ID
@@ -687,7 +329,7 @@ class ClaudeProcess:
 
                 # Build final command: node.exe cli.js [args...]
                 # Note: prompt will be sent via stdin, not command line
-                cmd = _build_direct_node_command(node_config, args)
+                cmd = build_direct_node_command(node_config, args)
 
                 logger.info(f"[{self.session_id}] Executing: node cli.js {' '.join(args[:5])}...")
                 logger.info(f"[{self.session_id}] Prompt length: {len(prompt)} chars, using stdin")
@@ -727,7 +369,6 @@ class ClaudeProcess:
 
                     # Try to extract Claude CLI session ID from verbose output for --resume
                     # Check both stdout and stderr (verbose output often goes to stderr)
-                    import re
                     combined_output = stdout_text + "\n" + stderr_text
                     session_patterns = [
                         r'Session[:\s]+([a-f0-9-]{20,})',
@@ -867,42 +508,21 @@ This file contains a log of all work performed by this session.
         """
         List all files in the storage directory recursively.
 
+        Files matching .gitignore patterns and default ignore patterns
+        (node_modules, .venv, etc.) are automatically excluded.
+
         Args:
             subpath: Subdirectory path (empty string for root).
 
         Returns:
             List of file information dictionaries.
         """
-        target_path = Path(self._storage_path)
-        if subpath:
-            target_path = target_path / subpath
-
-        if not target_path.exists():
-            return []
-
-        files = []
-        try:
-            # Recursively walk through all files
-            for item in target_path.rglob("*"):
-                if item.is_file():
-                    try:
-                        stat = item.stat()
-                        rel_path = str(item.relative_to(self._storage_path))
-                        # Normalize path separators
-                        rel_path = rel_path.replace("\\", "/")
-                        files.append({
-                            "name": item.name,
-                            "path": rel_path,
-                            "is_dir": False,
-                            "size": stat.st_size,
-                            "modified_at": datetime.fromtimestamp(stat.st_mtime)
-                        })
-                    except (OSError, ValueError) as e:
-                        logger.debug(f"[{self.session_id}] Skipping file {item}: {e}")
-        except Exception as e:
-            logger.error(f"[{self.session_id}] Failed to list files: {e}")
-
-        return files
+        return _list_storage_files(
+            storage_path=self._storage_path,
+            subpath=subpath,
+            session_id=self.session_id,
+            include_gitignore=True
+        )
 
     def read_storage_file(self, file_path: str, encoding: str = "utf-8") -> Optional[Dict]:
         """
@@ -915,29 +535,12 @@ This file contains a log of all work performed by this session.
         Returns:
             File content dictionary or None.
         """
-        target_path = Path(self._storage_path) / file_path
-
-        # Path validation (prevent directory traversal)
-        try:
-            target_path.resolve().relative_to(Path(self._storage_path).resolve())
-        except ValueError:
-            logger.warning(f"[{self.session_id}] Invalid file path: {file_path}")
-            return None
-
-        if not target_path.exists() or not target_path.is_file():
-            return None
-
-        try:
-            content = target_path.read_text(encoding=encoding)
-            return {
-                "file_path": file_path,
-                "content": content,
-                "size": len(content),
-                "encoding": encoding
-            }
-        except Exception as e:
-            logger.error(f"[{self.session_id}] Failed to read file: {e}")
-            return None
+        return _read_storage_file(
+            storage_path=self._storage_path,
+            file_path=file_path,
+            encoding=encoding,
+            session_id=self.session_id
+        )
 
     async def stop(self):
         """Stop session and cleanup resources."""
@@ -1024,8 +627,6 @@ This file contains a log of all work performed by this session.
                 - stop_reason: 'complete', 'max_iterations', 'error', 'user_stop'
                 - total_duration_ms: Total execution time
         """
-        import re
-
         # Patterns for detecting continuation and completion
         CONTINUE_PATTERN = re.compile(r'\[CONTINUE:\s*(.+?)\]', re.IGNORECASE)
         COMPLETE_PATTERN = re.compile(r'\[TASK_COMPLETE\]', re.IGNORECASE)

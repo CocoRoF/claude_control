@@ -4,6 +4,7 @@ Session Routing Middleware
 Session-based request routing in multi-pod environments
 Proxies to the appropriate Pod if session is on a different Pod
 """
+import os
 import re
 import logging
 from typing import Optional, Callable
@@ -16,6 +17,12 @@ from service.pod.pod_info import get_pod_info, PodInfo
 from service.proxy.internal_proxy import get_internal_proxy, PROXY_HEADER
 
 logger = logging.getLogger(__name__)
+
+
+def is_redis_enabled() -> bool:
+    """Check if Redis is enabled via environment variable."""
+    return os.getenv('USE_REDIS', 'false').lower() == 'true'
+
 
 # URL patterns to extract session ID from
 SESSION_URL_PATTERNS = [
@@ -47,6 +54,8 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, redis_client: Optional[RedisClient] = None):
         super().__init__(app)
         self._redis: Optional[RedisClient] = redis_client
+        # Cache whether Redis is enabled at startup
+        self._redis_enabled: bool = is_redis_enabled()
 
     def set_redis_client(self, redis_client: RedisClient):
         """Set Redis client (lazy injection)"""
@@ -54,7 +63,11 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
 
     @property
     def redis(self) -> Optional[RedisClient]:
-        """Return Redis client"""
+        """Return Redis client (None if Redis is disabled)"""
+        # If Redis is disabled, don't even try to get the client
+        if not self._redis_enabled:
+            return None
+
         if self._redis is None:
             from service.redis.redis_client import get_redis_client
             try:
@@ -176,8 +189,13 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
         Returns:
             (pod_name, pod_ip) or None
         """
+        # If Redis is disabled, skip silently (local mode)
+        if not self._redis_enabled:
+            return None
+
         if not self.redis or not self.redis.is_connected:
-            logger.warning("Redis not available for session routing")
+            # Only log warning when Redis was supposed to be available
+            logger.warning("Redis enabled but not connected - session routing unavailable")
             return None
 
         try:

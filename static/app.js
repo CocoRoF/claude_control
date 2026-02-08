@@ -215,12 +215,18 @@ function renderSessionList() {
         return;
     }
 
-    container.innerHTML = state.sessions.map(session => `
+    container.innerHTML = state.sessions.map(session => {
+        const roleClass = session.role === 'manager' ? 'role-manager' : 'role-worker';
+        const roleLabel = session.role === 'manager' ? 'M' : 'W';
+        return `
         <div class="session-item ${session.session_id === state.selectedSessionId ? 'selected' : ''}"
              onclick="selectSession('${session.session_id}')">
             <span class="session-status-dot ${session.status}"></span>
             <div class="session-info">
-                <div class="session-name">${session.session_name || 'Unnamed'}</div>
+                <div class="session-name">
+                    <span class="role-badge ${roleClass}">${roleLabel}</span>
+                    ${session.session_name || 'Unnamed'}
+                </div>
                 <div class="session-id">${session.session_id.substring(0, 8)}...</div>
             </div>
             <div class="session-actions">
@@ -229,7 +235,7 @@ function renderSessionList() {
                 </button>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 function updateSessionStats() {
@@ -261,14 +267,21 @@ function showCommandPanel(session) {
     document.getElementById('no-session-message').classList.add('hidden');
     document.getElementById('command-panel').classList.remove('hidden');
 
+    const roleLabel = session.role === 'manager' ? 'Manager' : 'Worker';
+    const roleClass = session.role === 'manager' ? 'role-manager' : 'role-worker';
+
     const infoContainer = document.getElementById('selected-session-info');
     infoContainer.innerHTML = `
-        <h4>${session.session_name || 'Unnamed Session'}</h4>
+        <h4>
+            <span class="role-badge-large ${roleClass}">${roleLabel}</span>
+            ${session.session_name || 'Unnamed Session'}
+        </h4>
         <div class="session-meta">
             <span>ID: ${session.session_id.substring(0, 8)}...</span>
             <span>Status: ${session.status}</span>
             <span>Model: ${session.model || 'Default'}</span>
             ${session.pod_name ? `<span>Pod: ${session.pod_name}</span>` : ''}
+            ${session.manager_id ? `<span>Manager: ${session.manager_id.substring(0, 8)}...</span>` : ''}
         </div>
     `;
 
@@ -300,6 +313,14 @@ function showCommandPanel(session) {
     const statusEl = document.getElementById('execution-status');
     statusEl.textContent = sessionData.statusText;
     statusEl.className = 'execution-status ' + sessionData.status;
+
+    // Show/hide manager dashboard tab
+    const dashboardTabBtn = document.getElementById('dashboard-tab-btn');
+    if (session.role === 'manager') {
+        dashboardTabBtn.classList.remove('hidden');
+    } else {
+        dashboardTabBtn.classList.add('hidden');
+    }
 }
 
 function showLogsPanel(session) {
@@ -321,6 +342,8 @@ async function createSession() {
     const timeout = parseFloat(document.getElementById('new-session-timeout').value) || 1800;
     const maxIterations = parseInt(document.getElementById('new-session-max-iterations').value) || 100;
     const autonomous = document.getElementById('new-session-autonomous').checked;
+    const role = document.getElementById('new-session-role').value || 'worker';
+    const managerId = document.getElementById('new-session-manager').value || null;
 
     try {
         // Get system prompt content
@@ -333,7 +356,9 @@ async function createSession() {
             timeout: timeout,
             autonomous: autonomous,
             autonomous_max_iterations: maxIterations,
-            system_prompt: systemPrompt || undefined
+            system_prompt: systemPrompt || undefined,
+            role: role,
+            manager_id: managerId || undefined
         };
 
         await apiCall('/api/sessions', {
@@ -346,6 +371,47 @@ async function createSession() {
         showSuccess('Session created successfully');
     } catch (error) {
         showError('Failed to create session: ' + error.message);
+    }
+}
+
+// Role selection handler
+function onRoleSelect() {
+    const role = document.getElementById('new-session-role').value;
+    const managerSelectGroup = document.getElementById('manager-select-group');
+
+    if (role === 'manager') {
+        // Hide manager selection for manager role
+        managerSelectGroup.classList.add('hidden');
+    } else {
+        // Show manager selection for worker role
+        managerSelectGroup.classList.remove('hidden');
+        loadManagersForSelect();
+    }
+}
+
+// Load managers for the selection dropdown
+async function loadManagersForSelect() {
+    try {
+        const managers = await apiCall('/api/sessions/managers');
+        const select = document.getElementById('new-session-manager');
+
+        // Clear existing options except the first one
+        select.innerHTML = '<option value="">None (Standalone)</option>';
+
+        for (const manager of managers) {
+            const option = document.createElement('option');
+            option.value = manager.session_id;
+            const name = manager.session_name || manager.session_id.substring(0, 8);
+            const statusIcon = manager.status === 'running' ? '🟢' : '⚪';
+            option.textContent = `${statusIcon} ${name}`;
+            // Disable non-running managers
+            if (manager.status !== 'running') {
+                option.disabled = true;
+            }
+            select.appendChild(option);
+        }
+    } catch (error) {
+        console.error('Failed to load managers:', error);
     }
 }
 
@@ -842,6 +908,11 @@ function switchTab(tabName) {
     if (tabName === 'playground') {
         initPlaygroundView();
     }
+
+    // Refresh dashboard when switching to dashboard tab
+    if (tabName === 'dashboard') {
+        refreshManagerDashboard();
+    }
 }
 
 // ========== Playground View (Three.js) ==========
@@ -1207,15 +1278,133 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ========== Manager Dashboard Functions ==========
+
+async function refreshManagerDashboard() {
+    if (!state.selectedSessionId) return;
+
+    const session = state.sessions.find(s => s.session_id === state.selectedSessionId);
+    if (!session || session.role !== 'manager') return;
+
+    // Update dashboard session name
+    const sessionNameEl = document.getElementById('dashboard-session-name');
+    if (sessionNameEl) {
+        sessionNameEl.textContent = session.session_name || session.session_id.substring(0, 8);
+    }
+
+    try {
+        const dashboard = await apiCall(`/api/sessions/${state.selectedSessionId}/dashboard`);
+        renderManagerDashboard(dashboard);
+    } catch (error) {
+        console.error('Failed to load manager dashboard:', error);
+    }
+}
+
+function renderManagerDashboard(dashboard) {
+    // Update worker count
+    document.getElementById('worker-count').textContent = dashboard.workers.length;
+
+    // Render workers list
+    const workersList = document.getElementById('workers-list');
+    if (dashboard.workers.length === 0) {
+        workersList.innerHTML = '<div class="empty-state-small">No workers assigned to this manager</div>';
+    } else {
+        workersList.innerHTML = dashboard.workers.map(worker => `
+            <div class="worker-item ${worker.is_busy ? 'busy' : 'idle'}">
+                <div class="worker-status-indicator ${worker.status}"></div>
+                <div class="worker-info">
+                    <div class="worker-name">${worker.worker_name || worker.worker_id.substring(0, 8)}</div>
+                    <div class="worker-status-text">${worker.status}</div>
+                </div>
+                <div class="worker-task-info">
+                    ${worker.is_busy
+                        ? `<span class="worker-busy-badge">Working</span><span class="worker-task-text">${worker.current_task || ''}</span>`
+                        : '<span class="worker-idle-badge">Idle</span>'}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Render activity timeline
+    const timeline = document.getElementById('activity-timeline');
+    if (dashboard.recent_events.length === 0) {
+        timeline.innerHTML = '<div class="empty-state-small">No activity yet</div>';
+    } else {
+        timeline.innerHTML = dashboard.recent_events.map(event => {
+            const time = new Date(event.timestamp).toLocaleString();
+            const typeClass = getEventTypeClass(event.event_type);
+            const icon = getEventIcon(event.event_type);
+            return `
+                <div class="timeline-item ${typeClass}">
+                    <div class="timeline-icon">${icon}</div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <span class="timeline-type">${formatEventType(event.event_type)}</span>
+                            <span class="timeline-time">${time}</span>
+                        </div>
+                        <div class="timeline-message">${event.message}</div>
+                        ${event.worker_id ? `<div class="timeline-worker">Worker: ${event.worker_id.substring(0, 8)}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+}
+
+function getEventTypeClass(eventType) {
+    switch (eventType) {
+        case 'task_delegated':
+        case 'worker_started':
+            return 'event-info';
+        case 'worker_completed':
+            return 'event-success';
+        case 'worker_error':
+            return 'event-error';
+        case 'worker_progress':
+            return 'event-progress';
+        default:
+            return '';
+    }
+}
+
+function formatEventType(eventType) {
+    const typeMap = {
+        'task_delegated': 'Task Delegated',
+        'worker_started': 'Worker Started',
+        'worker_completed': 'Worker Completed',
+        'worker_error': 'Worker Error',
+        'worker_progress': 'Progress Update',
+        'plan_created': 'Plan Created',
+        'plan_updated': 'Plan Updated',
+        'user_message': 'User Message',
+        'manager_response': 'Manager Response'
+    };
+    return typeMap[eventType] || eventType;
+}
+
+function getEventIcon(eventType) {
+    const iconMap = {
+        'task_delegated': '📤',
+        'worker_started': '▶️',
+        'worker_completed': '✅',
+        'worker_error': '❌',
+        'worker_progress': '🔄',
+        'plan_created': '📋',
+        'plan_updated': '📝',
+        'user_message': '💬',
+        'manager_response': '🤖'
+    };
+    return iconMap[eventType] || '📌';
+}
+
 // ========== Initialization ==========
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize sidebar state for mobile
+    // Initialize sidebar state
     initSidebarState();
 
-    // Initial load
+    // Load initial data
     refreshAll();
-
     // Periodic refresh
     setInterval(checkHealth, 30000); // Health check every 30s
     setInterval(loadSessions, 60000); // Session list every 60s

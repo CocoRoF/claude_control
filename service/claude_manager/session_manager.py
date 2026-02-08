@@ -5,12 +5,14 @@ Uses Redis as the true source for multi-pod environment support.
 Local processes are managed in memory, session metadata is stored in Redis.
 """
 import logging
+import os
 import uuid
 from typing import Dict, Optional, List
 
 from service.claude_manager.process_manager import ClaudeProcess
 from service.claude_manager.models import (
     SessionStatus,
+    SessionRole,
     SessionInfo,
     CreateSessionRequest,
     MCPConfig
@@ -20,6 +22,11 @@ from service.pod.pod_info import get_pod_info
 from service.logging.session_logger import get_session_logger, remove_session_logger
 
 logger = logging.getLogger(__name__)
+
+
+def is_redis_enabled() -> bool:
+    """Check if Redis is enabled via environment variable."""
+    return os.getenv('USE_REDIS', 'false').lower() == 'true'
 
 
 def merge_mcp_configs(base: Optional[MCPConfig], override: Optional[MCPConfig]) -> Optional[MCPConfig]:
@@ -56,6 +63,9 @@ class SessionManager:
         # Global MCP configuration (automatically applied to all sessions)
         self._global_mcp_config: Optional[MCPConfig] = None
 
+        # Cache whether Redis is enabled at startup
+        self._redis_enabled: bool = is_redis_enabled()
+
     def set_redis_client(self, redis_client: RedisClient):
         """Set Redis client (lazy injection)."""
         self._redis = redis_client
@@ -74,7 +84,11 @@ class SessionManager:
 
     @property
     def redis(self) -> Optional[RedisClient]:
-        """Return Redis client (try to get from singleton if not set)."""
+        """Return Redis client (None if Redis is disabled)."""
+        # If Redis is disabled, don't even try to get the client
+        if not self._redis_enabled:
+            return None
+
         if self._redis is None:
             try:
                 self._redis = get_redis_client()
@@ -123,7 +137,9 @@ class SessionManager:
             mcp_config=merged_mcp_config,  # Use merged MCP config
             system_prompt=request.system_prompt,  # System prompt for autonomous mode
             autonomous=request.autonomous,  # Autonomous mode flag
-            autonomous_max_iterations=request.autonomous_max_iterations  # Max iterations
+            autonomous_max_iterations=request.autonomous_max_iterations,  # Max iterations
+            role=request.role.value if request.role else "worker",  # Session role
+            manager_id=request.manager_id  # Manager ID for worker sessions
         )
 
         # Initialize session
@@ -153,7 +169,9 @@ class SessionManager:
             autonomous_max_iterations=process.autonomous_max_iterations,
             storage_path=process.storage_path,
             pod_name=pod_info.pod_name,
-            pod_ip=pod_info.pod_ip
+            pod_ip=pod_info.pod_ip,
+            role=SessionRole(process.role),
+            manager_id=process.manager_id
         )
 
         # Save session metadata to Redis
@@ -320,7 +338,9 @@ class SessionManager:
             'autonomous_max_iterations': session_info.autonomous_max_iterations,
             'storage_path': session_info.storage_path,
             'pod_name': session_info.pod_name,
-            'pod_ip': session_info.pod_ip
+            'pod_ip': session_info.pod_ip,
+            'role': session_info.role.value if session_info.role else 'worker',
+            'manager_id': session_info.manager_id
         }
 
         self.redis.save_session(session_id, session_data)
@@ -343,7 +363,9 @@ class SessionManager:
             autonomous_max_iterations=process.autonomous_max_iterations,
             storage_path=process.storage_path,
             pod_name=pod_info.pod_name,
-            pod_ip=pod_info.pod_ip
+            pod_ip=pod_info.pod_ip,
+            role=SessionRole(process.role),
+            manager_id=process.manager_id
         )
 
     def _dict_to_session_info(self, data: dict) -> SessionInfo:
@@ -351,6 +373,10 @@ class SessionManager:
         status = data.get('status')
         if isinstance(status, str):
             status = SessionStatus(status)
+
+        role = data.get('role', 'worker')
+        if isinstance(role, str):
+            role = SessionRole(role)
 
         return SessionInfo(
             session_id=data.get('session_id', ''),
@@ -366,8 +392,41 @@ class SessionManager:
             autonomous_max_iterations=data.get('autonomous_max_iterations', 100),
             storage_path=data.get('storage_path'),
             pod_name=data.get('pod_name'),
-            pod_ip=data.get('pod_ip')
+            pod_ip=data.get('pod_ip'),
+            role=role,
+            manager_id=data.get('manager_id')
         )
+
+    # ========== Manager/Worker Methods ==========
+
+    def get_workers_by_manager(self, manager_id: str) -> List[SessionInfo]:
+        """
+        Get all worker sessions under a manager.
+
+        Args:
+            manager_id: Manager session ID
+
+        Returns:
+            List of worker SessionInfo objects
+        """
+        all_sessions = self.list_sessions()
+        return [
+            session for session in all_sessions
+            if session.manager_id == manager_id and session.role == SessionRole.WORKER
+        ]
+
+    def get_managers(self) -> List[SessionInfo]:
+        """
+        Get all manager sessions.
+
+        Returns:
+            List of manager SessionInfo objects
+        """
+        all_sessions = self.list_sessions()
+        return [
+            session for session in all_sessions
+            if session.role == SessionRole.MANAGER
+        ]
 
 
 # Singleton session manager

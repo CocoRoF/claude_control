@@ -2,6 +2,15 @@
 Claude Manager Package
 
 Core modules for Claude Code session management
+
+Modules:
+    - models: Data models for sessions and MCP configuration
+    - session_manager: Session lifecycle management
+    - process_manager: Claude process execution (ClaudeProcess class)
+    - constants: Configuration constants and environment variable keys
+    - platform_utils: Cross-platform utilities
+    - cli_discovery: Claude CLI discovery utilities
+    - storage_utils: Storage and gitignore filtering utilities
 """
 from service.claude_manager.models import (
     SessionStatus,
@@ -20,6 +29,20 @@ from service.claude_manager.models import (
 )
 from service.claude_manager.session_manager import SessionManager, get_session_manager
 from service.claude_manager.process_manager import ClaudeProcess
+from service.claude_manager.constants import CLAUDE_DEFAULT_TIMEOUT, CLAUDE_ENV_KEYS
+from service.claude_manager.platform_utils import (
+    IS_WINDOWS,
+    DEFAULT_STORAGE_ROOT,
+)
+from service.claude_manager.cli_discovery import (
+    ClaudeNodeConfig,
+    find_claude_node_config,
+)
+from service.claude_manager.storage_utils import (
+    DEFAULT_IGNORE_PATTERNS,
+    list_storage_files,
+    read_storage_file,
+)
 
 __all__ = [
     # Models
@@ -40,4 +63,17 @@ __all__ = [
     'SessionManager',
     'get_session_manager',
     'ClaudeProcess',
+    # Constants
+    'CLAUDE_DEFAULT_TIMEOUT',
+    'CLAUDE_ENV_KEYS',
+    # Platform utilities
+    'IS_WINDOWS',
+    'DEFAULT_STORAGE_ROOT',
+    # CLI Discovery
+    'ClaudeNodeConfig',
+    'find_claude_node_config',
+    # Storage utilities
+    'DEFAULT_IGNORE_PATTERNS',
+    'list_storage_files',
+    'read_storage_file',
 ]
