@@ -645,7 +645,7 @@ class ClaudeProcess:
                 max_cmd_length = 2000 if IS_WINDOWS else 8000
                 total_length = len(prompt) + (len(effective_system_prompt) if effective_system_prompt else 0)
                 use_stdin = total_length > max_cmd_length
-                
+
                 if effective_system_prompt:
                     if use_stdin:
                         # System prompt too long for command line - will be sent with prompt via stdin
@@ -680,7 +680,7 @@ class ClaudeProcess:
                         if effective_system_prompt:
                             # Prepend system prompt instructions to the prompt
                             stdin_content = f"[SYSTEM INSTRUCTIONS]\n{effective_system_prompt}\n[END SYSTEM INSTRUCTIONS]\n\n{prompt}"
-                        
+
                         stdout, stderr = await asyncio.wait_for(
                             self._current_process.communicate(input=stdin_content.encode('utf-8')),
                             timeout=timeout
