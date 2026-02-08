@@ -513,6 +513,16 @@ body {
     color: var(--success-color);
 }
 
+.execution-status.success {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: var(--success-color);
+}
+
+.execution-status.warning {
+    background-color: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
 .execution-status.error {
     background-color: rgba(239, 68, 68, 0.15);
     color: var(--danger-color);

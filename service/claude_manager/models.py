@@ -234,6 +234,15 @@ class ExecuteResponse(BaseModel):
         default=None,
         description="Execution time (milliseconds)"
     )
+    # Auto-continue fields for self-manager mode
+    should_continue: bool = Field(
+        default=False,
+        description="Whether the task should continue (detected from [CONTINUE: ...] pattern)"
+    )
+    continue_hint: Optional[str] = Field(
+        default=None,
+        description="Hint about next step (extracted from [CONTINUE: ...] pattern)"
+    )
 
 
 class StorageFile(BaseModel):

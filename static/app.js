@@ -13,7 +13,10 @@ const state = {
     sessionData: {}, // { sessionId: { input: '', output: '', status: '', statusText: '' } }
     // Available prompt templates
     prompts: [], // [{ name, filename, description }]
-    promptContents: {} // { promptName: content }
+    promptContents: {}, // { promptName: content }
+    // Auto-continue state
+    isAutoContinuing: false,
+    autoContinueCount: 0
 };
 
 // Get or initialize session data
@@ -361,23 +364,37 @@ async function confirmDeleteSession() {
 
 // ========== Command Execution ==========
 
-async function executeCommand() {
+async function executeCommand(isContinuation = false) {
     if (!state.selectedSessionId) {
         showError('Please select a session first');
         return;
     }
 
-    const prompt = document.getElementById('command-input').value.trim();
-    if (!prompt) {
-        showError('Please enter a prompt');
-        return;
+    let prompt;
+    if (isContinuation) {
+        prompt = "continue";
+    } else {
+        prompt = document.getElementById('command-input').value.trim();
+        if (!prompt) {
+            showError('Please enter a prompt');
+            return;
+        }
     }
 
     const timeout = parseInt(document.getElementById('command-timeout').value) || 600;
     const maxTurns = parseInt(document.getElementById('command-max-turns').value) || null;
     const skipPermissions = document.getElementById('skip-permissions').checked;
+    const autoContinue = document.getElementById('auto-continue').checked;
 
-    setExecutionStatus('running', 'Executing...');
+    // Update UI for auto-continue mode
+    if (autoContinue && !isContinuation) {
+        state.isAutoContinuing = true;
+        state.autoContinueCount = 0;
+        updateAutoContinueUI();
+    }
+
+    const statusPrefix = isContinuation ? `[Auto #${state.autoContinueCount + 1}] ` : '';
+    setExecutionStatus('running', statusPrefix + 'Executing...');
 
     // 캐릭터에게 작업 시작 알림
     notifyCharacterRequestStart(state.selectedSessionId);
@@ -394,10 +411,13 @@ async function executeCommand() {
         });
 
         const sessionData = getSessionData(state.selectedSessionId);
-        sessionData.input = prompt;
+        if (!isContinuation) {
+            sessionData.input = prompt;
+        }
 
         if (result.success) {
-            const statusText = `Completed in ${result.duration_ms}ms`;
+            state.autoContinueCount++;
+            const statusText = statusPrefix + `Completed in ${result.duration_ms}ms`;
             setExecutionStatus('success', statusText);
             const output = result.output || 'No output';
             document.getElementById('command-output').textContent = output;
@@ -409,7 +429,28 @@ async function executeCommand() {
 
             // 캐릭터에게 작업 완료 알림 (성공)
             notifyCharacterRequestEnd(state.selectedSessionId, true);
+
+            // Check for auto-continue
+            if (autoContinue && result.should_continue && state.isAutoContinuing) {
+                const hint = result.continue_hint || 'next step';
+                setExecutionStatus('running', `[Auto #${state.autoContinueCount + 1}] Continuing: ${hint}...`);
+
+                // Small delay before continuing
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                if (state.isAutoContinuing) {
+                    executeCommand(true);
+                }
+            } else if (state.isAutoContinuing) {
+                // Task completed
+                state.isAutoContinuing = false;
+                updateAutoContinueUI();
+                setExecutionStatus('success', `All done! (${state.autoContinueCount} iterations)`);
+            }
         } else {
+            state.isAutoContinuing = false;
+            updateAutoContinueUI();
+
             setExecutionStatus('error', 'Failed');
             const output = result.error || 'Unknown error';
             document.getElementById('command-output').textContent = output;
@@ -423,6 +464,9 @@ async function executeCommand() {
             notifyCharacterRequestEnd(state.selectedSessionId, false);
         }
     } catch (error) {
+        state.isAutoContinuing = false;
+        updateAutoContinueUI();
+
         setExecutionStatus('error', 'Error');
         document.getElementById('command-output').textContent = error.message;
 
@@ -434,6 +478,25 @@ async function executeCommand() {
 
         // 캐릭터에게 작업 완료 알림 (에러)
         notifyCharacterRequestEnd(state.selectedSessionId, false);
+    }
+}
+
+function stopAutoContinue() {
+    state.isAutoContinuing = false;
+    updateAutoContinueUI();
+    setExecutionStatus('warning', 'Auto-continue stopped by user');
+}
+
+function updateAutoContinueUI() {
+    const executeBtn = document.getElementById('execute-btn');
+    const stopBtn = document.getElementById('stop-btn');
+
+    if (state.isAutoContinuing) {
+        executeBtn.classList.add('hidden');
+        stopBtn.classList.remove('hidden');
+    } else {
+        executeBtn.classList.remove('hidden');
+        stopBtn.classList.add('hidden');
     }
 }
 

@@ -3,9 +3,13 @@ Claude Control API Controller
 
 REST API endpoints for Claude session management.
 """
+import re
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Path, Query
+
+# Pattern to detect auto-continue signal from self-manager
+CONTINUE_PATTERN = re.compile(r'\[CONTINUE:\s*(.+?)\]', re.IGNORECASE)
 
 from service.claude_manager.models import (
     CreateSessionRequest,
@@ -141,13 +145,26 @@ async def execute_prompt(
                 cost_usd=result.get("cost_usd")
             )
 
+        # Detect CONTINUE pattern for auto-continue mode
+        output = result.get("output") or ""
+        should_continue = False
+        continue_hint = None
+
+        continue_match = CONTINUE_PATTERN.search(output)
+        if continue_match and result.get("success", False):
+            should_continue = True
+            continue_hint = continue_match.group(1).strip()
+            logger.info(f"[{session_id}] 🔄 Auto-continue detected: {continue_hint}")
+
         return ExecuteResponse(
             success=result.get("success", False),
             session_id=session_id,
-            output=result.get("output"),
+            output=output,
             error=result.get("error"),
             cost_usd=result.get("cost_usd"),
-            duration_ms=result.get("duration_ms")
+            duration_ms=result.get("duration_ms"),
+            should_continue=should_continue,
+            continue_hint=continue_hint
         )
     except Exception as e:
         logger.error(f"❌ Execution failed: {e}", exc_info=True)
