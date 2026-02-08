@@ -69,19 +69,19 @@
         // Z=7
         ['B', 'B', 'H', 'B', 'B', 'H', 'C4', 'C1', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
         // Z=8 (road row)
-        ['E', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'E3'],
+        ['E', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'L'],
         // Z=9
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'H'],
         // Z=10
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'H'],
         // Z=11 (road row)
-        ['E', 'R', '+', 'R', 'R', 'T3', 'R', 'R', 'T3', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'E3'],
+        ['E', 'R', '+', 'R', 'R', 'T3', 'R', 'R', 'T3', 'R', 'R', '+', 'R', 'R', 'T4', 'B', 'B', 'B', 'B', 'B', 'H'],
         // Z=12
-        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'H'],
         // Z=13
-        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'H'],
         // Z=14 (road row)
-        ['E', 'R', 'T4', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'T2', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'E3'],
+        ['E', 'R', 'T4', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'T2', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'L4'],
         // Z=15
         ['C3', 'C2', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'M', 'M', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
         // Z=16
@@ -349,7 +349,7 @@
         { gx: 18.8, gz: 4.2, type: 'park', name: 'rockA', rotation: 0 },
 
         // === Grass Patches around pond ===
-        { gx: 16.2, gz: 2, type: 'park', name: 'patchGrassLarge', rotation: 0 },
+        { gx: 16.2, gz: 2, type: 'park', name: 'patchGrassLarge', rotation: 0, y: 0.1 },
         { gx: 19.3, gz: 2, type: 'park', name: 'patchGrass', rotation: Math.PI / 3 },
         { gx: 16.5, gz: 4.5, type: 'park', name: 'grassLarge', rotation: Math.PI / 4 },
         { gx: 19, gz: 4.8, type: 'park', name: 'grass', rotation: -Math.PI / 6 },
@@ -380,9 +380,8 @@
 
         // =============== SMALL GARDEN A (X=6-7, Z=6-7) ===============
         { gx: 6.3, gz: 6.3, type: 'park', name: 'tree', rotation: 0 },
-        { gx: 7.2, gz: 6.5, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 4 },
+        { gx: 7.2, gz: 6.5, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 4, y: 0.1 },
         { gx: 6.5, gz: 7.2, type: 'park', name: 'rockFlatGrass', rotation: 0 },
-        { gx: 7.5, gz: 7.5, type: 'park', name: 'grass', rotation: Math.PI / 3 },
 
         // =============== SMALL GARDEN B (X=0-1, Z=15-16) ===============
         { gx: 0.3, gz: 15.3, type: 'park', name: 'treeTall', rotation: Math.PI / 6 },
@@ -395,10 +394,102 @@
         { gx: 17.5, gz: 18.3, type: 'park', name: 'treeAutumn', rotation: 0 },
         { gx: 19, gz: 18.5, type: 'park', name: 'tree', rotation: Math.PI / 3 },
         { gx: 20, gz: 18.2, type: 'park', name: 'treeTall', rotation: -Math.PI / 4 },
-        { gx: 18, gz: 19.3, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 6 },
+        { gx: 18, gz: 19.3, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 6, y: 0.1 },
         { gx: 19.5, gz: 19.5, type: 'park', name: 'rockB', rotation: 0 },
         { gx: 17.3, gz: 19, type: 'park', name: 'grass', rotation: Math.PI / 2 },
-        { gx: 20, gz: 19.2, type: 'park', name: 'treeAutumnTall', rotation: Math.PI / 5 }
+        { gx: 20, gz: 19.2, type: 'park', name: 'treeAutumnTall', rotation: Math.PI / 5 },
+
+        // ===== Metal Panels along park edges (X=14.5-19.5, Z=8.4 and Z=13.6) =====
+        { gx:14.6, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:15.1, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:15.6, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:16.1, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:16.6, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:17.1, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:17.6, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:18.1, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:18.6, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:19.1, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:19.35, gz:8.4, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:14.6, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:15.1, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:15.6, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:16.1, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:16.6, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:17.1, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:17.6, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:18.1, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:18.6, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:19.1, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+        { gx:19.35, gz:13.6, type: 'park', name: 'metalPanel', rotation: 0 },
+
+        { gx:14.4, gz:8.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:9.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:9.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:10.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:10.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:11.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:11.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:12.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:12.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:13.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:14.4, gz:13.40, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:8.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:9.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:9.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:10.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:10.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:11.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:11.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:12.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:12.65, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:13.15, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+        { gx:19.6, gz:13.40, type: 'park', name: 'metalPanel', rotation: Math.PI / 2 },
+
+        { gx:15.3, gz:9.5, type: 'park', name: 'rockC', rotation: Math.PI / 3 },
+        { gx:14.8, gz:8.7, type: 'park', name: 'rockC', rotation: 0 },
+        { gx:14.8, gz:9, type: 'park', name: 'rockC', rotation: Math.PI / 7 },
+        { gx:14.8, gz:9.3, type: 'park', name: 'rockC', rotation: Math.PI / 2 },
+        { gx:15.3, gz:8.8, type: 'park', name: 'rockC', rotation: Math.PI / 4 },
+
+        { gx:14.7, gz:12.1, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:14.7, gz:12.4, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:14.7, gz:12.7, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:14.7, gz:13, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:14.7, gz:13.3, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:15.1, gz:12.1, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:15.1, gz:12.4, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:15.1, gz:12.7, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:15.1, gz:13, type: 'park', name: 'floorOld', rotation: 0 },
+        { gx:15.1, gz:13.3, type: 'park', name: 'floorOld', rotation: 0 },
+
+        { gx:14.6, gz:12.9, type: 'park', name: 'barrel', rotation: 0 },
+        { gx:14.6, gz:13.15, type: 'park', name: 'barrel', rotation: 0 },
+        { gx:14.6, gz:13.4, type: 'park', name: 'barrel', rotation: 0 },
+
+
+        { gx:17, gz:12, type: 'park', name: 'patchGrassLarge', rotation: 0, y: 0.05 },
+        { gx:17, gz:11, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 2, y: 0.05 },
+        { gx:17.5, gz:11, type: 'park', name: 'patchGrassLarge', rotation: Math.PI, y: 0.05 },
+        { gx:17.6, gz:11.5, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 3, y: 0.05 },
+
+        { gx: 16.2, gz: 13.1, type: 'park', name: 'treeLog', rotation: 0, rotation: Math.PI / 2, y: 0.05 },
+        { gx: 16.1, gz: 13.3, type: 'park', name: 'treeLog', rotation: 0, rotation: Math.PI / 2, y: 0.05 },
+        { gx: 16.2, gz: 13.5, type: 'park', name: 'treeLog', rotation: 0, rotation: Math.PI / 2, y: 0.05 },
+        { gx: 16.15, gz: 13.2, type: 'park', name: 'treeLog', rotation: 0, rotation: Math.PI / 2, y: 0.25 },
+        { gx: 16.2, gz: 13.4, type: 'park', name: 'treeLog', rotation: 0, rotation: Math.PI / 2, y: 0.25 },
+
+        { gx: 19.15, gz: 8.77, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.05 },
+        { gx: 19.12, gz: 8.8, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.05 },
+        { gx: 19.23, gz: 9.1, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.05 },
+        { gx: 19.11, gz: 8.88, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.3 },
+        { gx: 19.284, gz: 9.04, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.25 },
+        { gx: 19.35, gz: 8.7, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.05 },
+        { gx: 19.45, gz: 8.9, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.05 },
+        { gx: 19.45, gz: 9.1, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.05 },
+        { gx: 19.40, gz: 8.8, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.25 },
+        { gx: 19.45, gz: 9, type: 'park', name: 'boxLarge', rotation: 0, rotation: 0, y: 0.25 },
+
     ];
 
     // ==================== Work Positions (Buildings) ====================

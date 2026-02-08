@@ -357,7 +357,8 @@
                 const model = this.assetLoader.getModel(item.type, item.name);
                 if (model) {
                     // Support fractional positions for natural placement
-                    model.position.set(item.gx, 0, item.gz);
+                    // Support optional y offset for items that need height adjustment
+                    model.position.set(item.gx, item.y || 0, item.gz);
                     model.rotation.y = item.rotation || 0;
 
                     // Support optional scale for variety

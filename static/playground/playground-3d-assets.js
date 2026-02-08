@@ -135,8 +135,10 @@
 
             // Props
             barrel: { pack: 'survival', file: 'barrel.glb' },
+            boxLarge: { pack: 'survival', file: 'box-large.glb' },
             bucket: { pack: 'survival', file: 'bucket.glb' },
             chest: { pack: 'survival', file: 'chest.glb' },
+            metalPanel: { pack: 'survival', file: 'metal-panel.glb' },
             signpost: { pack: 'survival', file: 'signpost.glb' },
             signpostSingle: { pack: 'survival', file: 'signpost-single.glb' },
 
@@ -276,7 +278,7 @@
                 'park/grass', 'park/grassLarge', 'park/patchGrass', 'park/patchGrassLarge',
                 'park/campfirePit', 'park/campfireStand',
                 'park/tent', 'park/tentCanvas',
-                'park/barrel', 'park/bucket', 'park/chest', 'park/signpost', 'park/signpostSingle',
+                'park/barrel', 'park/boxLarge', 'park/bucket', 'park/chest', 'park/metalPanel', 'park/signpost', 'park/signpostSingle',
                 'park/floor', 'park/floorOld',
                 'park/workbench', 'park/fence', 'park/fenceDoorway',
                 // Minigolf grass tiles for park ground
