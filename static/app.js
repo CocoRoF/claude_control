@@ -272,6 +272,25 @@ function showCommandPanel(session) {
         </div>
     `;
 
+    // Apply session settings to command options (read-only display)
+    document.getElementById('command-timeout').value = session.timeout || 1800;
+    document.getElementById('command-max-turns').value = session.max_turns || 100;
+    document.getElementById('autonomous-max-iterations').value = session.autonomous_max_iterations || 100;
+
+    // Update session mode badge
+    const modeBadge = document.getElementById('session-mode-badge');
+    if (modeBadge) {
+        if (session.autonomous) {
+            modeBadge.textContent = 'Autonomous';
+            modeBadge.classList.add('autonomous');
+            modeBadge.classList.remove('single');
+        } else {
+            modeBadge.textContent = 'Single';
+            modeBadge.classList.add('single');
+            modeBadge.classList.remove('autonomous');
+        }
+    }
+
     // Restore session-specific input and output
     const sessionData = getSessionData(session.session_id);
     document.getElementById('command-input').value = sessionData.input;
@@ -299,6 +318,8 @@ async function createSession() {
     const name = document.getElementById('new-session-name').value;
     const model = document.getElementById('new-session-model').value;
     const maxTurns = parseInt(document.getElementById('new-session-max-turns').value) || 100;
+    const timeout = parseFloat(document.getElementById('new-session-timeout').value) || 1800;
+    const maxIterations = parseInt(document.getElementById('new-session-max-iterations').value) || 100;
     const autonomous = document.getElementById('new-session-autonomous').checked;
 
     try {
@@ -309,7 +330,9 @@ async function createSession() {
             session_name: name || undefined,
             model: model || undefined,
             max_turns: maxTurns,
+            timeout: timeout,
             autonomous: autonomous,
+            autonomous_max_iterations: maxIterations,
             system_prompt: systemPrompt || undefined
         };
 
@@ -372,40 +395,38 @@ async function confirmDeleteSession() {
 
 // ========== Command Execution ==========
 
-async function executeCommand(isContinuation = false) {
+async function executeCommand() {
     if (!state.selectedSessionId) {
         showError('Please select a session first');
         return;
     }
 
-    let prompt;
-    if (isContinuation) {
-        prompt = "continue";
-    } else {
-        prompt = document.getElementById('command-input').value.trim();
-        if (!prompt) {
-            showError('Please enter a prompt');
-            return;
-        }
+    const prompt = document.getElementById('command-input').value.trim();
+    if (!prompt) {
+        showError('Please enter a prompt');
+        return;
     }
 
-    const timeout = parseInt(document.getElementById('command-timeout').value) || 600;
-    const maxTurns = parseInt(document.getElementById('command-max-turns').value) || null;
+    // Get current session to check if autonomous mode
+    const session = state.sessions.find(s => s.session_id === state.selectedSessionId);
+    if (!session) {
+        showError('Session not found');
+        return;
+    }
+
     const skipPermissions = document.getElementById('skip-permissions').checked;
-    const autoContinue = document.getElementById('auto-continue').checked;
 
-    // Update UI for auto-continue mode
-    if (autoContinue && !isContinuation) {
-        state.isAutoContinuing = true;
-        state.autoContinueCount = 0;
-        state.autoContinueRetries = 0;
-        updateAutoContinueUI();
+    // Check if session is in autonomous mode
+    if (session.autonomous) {
+        await executeAutonomousInternal(prompt, skipPermissions);
+    } else {
+        await executeSingleInternal(prompt, skipPermissions);
     }
+}
 
-    const statusPrefix = isContinuation ? `[Auto #${state.autoContinueCount + 1}] ` : '';
-    setExecutionStatus('running', statusPrefix + 'Executing...');
-
-    // 캐릭터에게 작업 시작 알림
+async function executeSingleInternal(prompt, skipPermissions) {
+    setExecutionStatus('running', 'Executing...');
+    updateExecutionUI(true);
     notifyCharacterRequestStart(state.selectedSessionId);
 
     try {
@@ -413,128 +434,138 @@ async function executeCommand(isContinuation = false) {
             method: 'POST',
             body: JSON.stringify({
                 prompt: prompt,
-                timeout: timeout,
-                max_turns: maxTurns,
                 skip_permissions: skipPermissions
             })
         });
 
         const sessionData = getSessionData(state.selectedSessionId);
-        if (!isContinuation) {
-            sessionData.input = prompt;
-        }
+        sessionData.input = prompt;
 
         if (result.success) {
-            state.autoContinueCount++;
-            state.autoContinueRetries = 0; // Reset retry counter on success
-            const statusText = statusPrefix + `Completed in ${result.duration_ms}ms`;
+            const statusText = `Completed in ${result.duration_ms}ms`;
             setExecutionStatus('success', statusText);
             const output = result.output || 'No output';
             document.getElementById('command-output').textContent = output;
 
-            // Save to session data
             sessionData.output = output;
             sessionData.status = 'success';
             sessionData.statusText = statusText;
 
-            // 캐릭터에게 작업 완료 알림 (성공)
             notifyCharacterRequestEnd(state.selectedSessionId, true);
-
-            // Check for auto-continue
-            if (autoContinue && result.should_continue && state.isAutoContinuing) {
-                const hint = result.continue_hint || 'next step';
-                setExecutionStatus('running', `[Auto #${state.autoContinueCount + 1}] Continuing: ${hint}...`);
-
-                // Small delay before continuing
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                if (state.isAutoContinuing) {
-                    executeCommand(true);
-                }
-            } else if (state.isAutoContinuing) {
-                // Task completed
-                state.isAutoContinuing = false;
-                updateAutoContinueUI();
-                setExecutionStatus('success', `All done! (${state.autoContinueCount} iterations)`);
-            }
         } else {
-            // Handle failure with retry logic for auto-continue
-            if (state.isAutoContinuing && state.autoContinueRetries < state.maxRetries) {
-                state.autoContinueRetries++;
-                const retryDelay = Math.min(5000 * state.autoContinueRetries, 15000);
-                setExecutionStatus('warning', `Retry ${state.autoContinueRetries}/${state.maxRetries} in ${retryDelay/1000}s...`);
-
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-
-                if (state.isAutoContinuing) {
-                    executeCommand(true);
-                    return;
-                }
-            }
-
-            state.isAutoContinuing = false;
-            updateAutoContinueUI();
-
             setExecutionStatus('error', 'Failed');
             const output = result.error || 'Unknown error';
             document.getElementById('command-output').textContent = output;
 
-            // Save to session data
             sessionData.output = output;
             sessionData.status = 'error';
             sessionData.statusText = 'Failed';
 
-            // 캐릭터에게 작업 완료 알림 (실패)
             notifyCharacterRequestEnd(state.selectedSessionId, false);
         }
     } catch (error) {
-        // Handle network/timeout errors with retry logic
-        if (state.isAutoContinuing && state.autoContinueRetries < state.maxRetries) {
-            state.autoContinueRetries++;
-            const retryDelay = Math.min(5000 * state.autoContinueRetries, 15000);
-            setExecutionStatus('warning', `Network error. Retry ${state.autoContinueRetries}/${state.maxRetries} in ${retryDelay/1000}s...`);
-
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-
-            if (state.isAutoContinuing) {
-                executeCommand(true);
-                return;
-            }
-        }
-
-        state.isAutoContinuing = false;
-        updateAutoContinueUI();
-
         setExecutionStatus('error', 'Error');
         document.getElementById('command-output').textContent = error.message;
 
-        // Save to session data
         const sessionData = getSessionData(state.selectedSessionId);
         sessionData.output = error.message;
         sessionData.status = 'error';
         sessionData.statusText = 'Error';
 
-        // 캐릭터에게 작업 완료 알림 (에러)
         notifyCharacterRequestEnd(state.selectedSessionId, false);
+    } finally {
+        updateExecutionUI(false);
     }
 }
 
-function stopAutoContinue() {
-    state.isAutoContinuing = false;
-    updateAutoContinueUI();
-    setExecutionStatus('warning', 'Auto-continue stopped by user');
+async function executeAutonomousInternal(prompt, skipPermissions) {
+    state.isAutoContinuing = true;
+    state.autoContinueCount = 0;
+    updateExecutionUI(true);
+    setExecutionStatus('running', 'Starting autonomous execution...');
+    notifyCharacterRequestStart(state.selectedSessionId);
+
+    try {
+        const result = await apiCall(`/api/sessions/${state.selectedSessionId}/execute/autonomous`, {
+            method: 'POST',
+            body: JSON.stringify({
+                prompt: prompt,
+                skip_permissions: skipPermissions
+            })
+        });
+
+        const sessionData = getSessionData(state.selectedSessionId);
+        sessionData.input = prompt;
+
+        if (result.success) {
+            const statusText = `✅ Completed in ${result.total_iterations} iterations (${result.stop_reason})`;
+            setExecutionStatus('success', statusText);
+            const output = result.final_output || 'No output';
+            document.getElementById('command-output').textContent = output;
+
+            sessionData.output = output;
+            sessionData.status = 'success';
+            sessionData.statusText = statusText;
+
+            notifyCharacterRequestEnd(state.selectedSessionId, true);
+        } else {
+            setExecutionStatus('error', `❌ Failed: ${result.stop_reason}`);
+            const output = result.error || result.final_output || 'Unknown error';
+            document.getElementById('command-output').textContent = output;
+
+            sessionData.output = output;
+            sessionData.status = 'error';
+            sessionData.statusText = `Failed: ${result.stop_reason}`;
+
+            notifyCharacterRequestEnd(state.selectedSessionId, false);
+        }
+    } catch (error) {
+        setExecutionStatus('error', 'Error');
+        document.getElementById('command-output').textContent = error.message;
+
+        const sessionData = getSessionData(state.selectedSessionId);
+        sessionData.output = error.message;
+        sessionData.status = 'error';
+        sessionData.statusText = 'Error';
+
+        notifyCharacterRequestEnd(state.selectedSessionId, false);
+    } finally {
+        state.isAutoContinuing = false;
+        updateExecutionUI(false);
+    }
 }
 
-function updateAutoContinueUI() {
+async function stopExecution() {
+    if (!state.selectedSessionId) return;
+
+    // Check if session is autonomous
+    const session = state.sessions.find(s => s.session_id === state.selectedSessionId);
+
+    if (session && session.autonomous && state.isAutoContinuing) {
+        try {
+            await apiCall(`/api/sessions/${state.selectedSessionId}/execute/autonomous/stop`, {
+                method: 'POST'
+            });
+            setExecutionStatus('warning', '🛑 Stop requested, waiting for current iteration...');
+        } catch (error) {
+            console.error('Failed to stop autonomous execution:', error);
+        }
+    }
+
+    state.isAutoContinuing = false;
+    updateExecutionUI(false);
+}
+
+function updateExecutionUI(isRunning) {
     const executeBtn = document.getElementById('execute-btn');
     const stopBtn = document.getElementById('stop-btn');
 
-    if (state.isAutoContinuing) {
-        executeBtn.classList.add('hidden');
-        stopBtn.classList.remove('hidden');
+    if (isRunning) {
+        if (executeBtn) executeBtn.classList.add('hidden');
+        if (stopBtn) stopBtn.classList.remove('hidden');
     } else {
-        executeBtn.classList.remove('hidden');
-        stopBtn.classList.add('hidden');
+        if (executeBtn) executeBtn.classList.remove('hidden');
+        if (stopBtn) stopBtn.classList.add('hidden');
     }
 }
 

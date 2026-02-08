@@ -119,8 +119,11 @@ class SessionManager:
             env_vars=request.env_vars,
             model=request.model,
             max_turns=request.max_turns,
+            timeout=request.timeout,  # Execution timeout
             mcp_config=merged_mcp_config,  # Use merged MCP config
-            system_prompt=request.system_prompt  # System prompt for autonomous mode
+            system_prompt=request.system_prompt,  # System prompt for autonomous mode
+            autonomous=request.autonomous,  # Autonomous mode flag
+            autonomous_max_iterations=request.autonomous_max_iterations  # Max iterations
         )
 
         # Initialize session
@@ -144,6 +147,10 @@ class SessionManager:
             pid=process.pid,
             error_message=process.error_message,
             model=process.model,
+            max_turns=process.max_turns,
+            timeout=process.timeout,
+            autonomous=process.autonomous,
+            autonomous_max_iterations=process.autonomous_max_iterations,
             storage_path=process.storage_path,
             pod_name=pod_info.pod_name,
             pod_ip=pod_info.pod_ip
@@ -307,6 +314,10 @@ class SessionManager:
             'pid': session_info.pid,
             'error_message': session_info.error_message,
             'model': session_info.model,
+            'max_turns': session_info.max_turns,
+            'timeout': session_info.timeout,
+            'autonomous': session_info.autonomous,
+            'autonomous_max_iterations': session_info.autonomous_max_iterations,
             'storage_path': session_info.storage_path,
             'pod_name': session_info.pod_name,
             'pod_ip': session_info.pod_ip
@@ -326,6 +337,10 @@ class SessionManager:
             pid=process.pid,
             error_message=process.error_message,
             model=process.model,
+            max_turns=process.max_turns,
+            timeout=process.timeout,
+            autonomous=process.autonomous,
+            autonomous_max_iterations=process.autonomous_max_iterations,
             storage_path=process.storage_path,
             pod_name=pod_info.pod_name,
             pod_ip=pod_info.pod_ip
@@ -345,6 +360,10 @@ class SessionManager:
             pid=data.get('pid'),
             error_message=data.get('error_message'),
             model=data.get('model'),
+            max_turns=data.get('max_turns', 100),
+            timeout=data.get('timeout', 1800.0),
+            autonomous=data.get('autonomous', True),
+            autonomous_max_iterations=data.get('autonomous_max_iterations', 100),
             storage_path=data.get('storage_path'),
             pod_name=data.get('pod_name'),
             pod_ip=data.get('pod_ip')

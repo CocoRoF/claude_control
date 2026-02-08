@@ -460,17 +460,31 @@ class ClaudeProcess:
         env_vars: Optional[Dict[str, str]] = None,
         model: Optional[str] = None,
         max_turns: Optional[int] = None,
+        timeout: Optional[float] = None,
         storage_root: Optional[str] = None,
         mcp_config: Optional[MCPConfig] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        autonomous: Optional[bool] = True,
+        autonomous_max_iterations: Optional[int] = 100
     ):
         self.session_id = session_id
         self.session_name = session_name
         self.model = model
-        self.max_turns = max_turns
+        self.max_turns = max_turns or 100
+        self.timeout = timeout or 1800.0  # Default 30 minutes
         self.env_vars = env_vars or {}
         self.mcp_config = mcp_config
         self.system_prompt = system_prompt  # Store system prompt for all executions
+
+        # Autonomous mode settings
+        self.autonomous = autonomous if autonomous is not None else True
+        self.autonomous_max_iterations = autonomous_max_iterations or 100
+
+        # Autonomous execution state
+        self._original_request: Optional[str] = None
+        self._autonomous_iteration: int = 0
+        self._autonomous_running: bool = False
+        self._autonomous_stop_requested: bool = False
 
         # Storage configuration (using Path for cross-platform compatibility)
         self._storage_root = storage_root or DEFAULT_STORAGE_ROOT
@@ -949,6 +963,245 @@ This file contains a log of all work performed by this session.
                 logger.info(f"[{self.session_id}] Storage cleaned up: {self._storage_path}")
         except Exception as e:
             logger.error(f"[{self.session_id}] Failed to cleanup storage: {e}")
+
+    # ========== Autonomous Mode Methods ==========
+
+    def stop_autonomous(self):
+        """Request to stop the autonomous execution loop."""
+        self._autonomous_stop_requested = True
+        logger.info(f"[{self.session_id}] 🛑 Autonomous stop requested")
+
+    @property
+    def autonomous_state(self) -> Dict[str, Any]:
+        """Get current autonomous execution state."""
+        return {
+            "is_running": self._autonomous_running,
+            "iteration": self._autonomous_iteration,
+            "original_request": self._original_request,
+            "stop_requested": self._autonomous_stop_requested,
+            "max_iterations": self.autonomous_max_iterations
+        }
+
+    async def execute_autonomous(
+        self,
+        prompt: str,
+        timeout_per_iteration: float = 600.0,
+        max_iterations: Optional[int] = None,
+        skip_permissions: Optional[bool] = True,
+        system_prompt: Optional[str] = None,
+        max_turns: Optional[int] = None,
+        on_iteration_complete: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a task autonomously with self-managing loop.
+
+        This method implements the core autonomous/worker mode:
+        1. Stores the original user request
+        2. Executes Claude with the request
+        3. Checks for [CONTINUE: ...] or [TASK_COMPLETE] patterns
+        4. If continue: reminds Claude of original request and continues
+        5. If complete: returns final result
+        6. Repeats until complete or max_iterations reached
+
+        Args:
+            prompt: The original user request to complete.
+            timeout_per_iteration: Timeout for each iteration (seconds).
+            max_iterations: Maximum iterations (None uses session setting).
+            skip_permissions: Skip permission prompts.
+            system_prompt: Additional system prompt.
+            max_turns: Maximum turns per iteration.
+            on_iteration_complete: Callback called after each iteration
+                                   with (iteration, result, is_complete).
+
+        Returns:
+            Dict with:
+                - success: Whether execution completed successfully
+                - is_complete: Whether the task was fully completed
+                - total_iterations: Number of iterations executed
+                - original_request: The original user request
+                - final_output: Output from the final iteration
+                - all_outputs: List of all iteration outputs
+                - stop_reason: 'complete', 'max_iterations', 'error', 'user_stop'
+                - total_duration_ms: Total execution time
+        """
+        import re
+
+        # Patterns for detecting continuation and completion
+        CONTINUE_PATTERN = re.compile(r'\[CONTINUE:\s*(.+?)\]', re.IGNORECASE)
+        COMPLETE_PATTERN = re.compile(r'\[TASK_COMPLETE\]', re.IGNORECASE)
+
+        # Initialize autonomous state
+        self._original_request = prompt
+        self._autonomous_iteration = 0
+        self._autonomous_running = True
+        self._autonomous_stop_requested = False
+
+        effective_max_iterations = max_iterations or self.autonomous_max_iterations
+        all_outputs: List[str] = []
+        total_duration_ms = 0
+        stop_reason = "unknown"
+        final_output = ""
+        is_complete = False
+
+        logger.info(f"[{self.session_id}] 🚀 Starting autonomous execution (max {effective_max_iterations} iterations)")
+        logger.info(f"[{self.session_id}] 📝 Original request: {prompt[:200]}{'...' if len(prompt) > 200 else ''}")
+
+        try:
+            # Build reminder prefix for subsequent iterations
+            reminder_template = """
+## ⚠️ REMINDER: Original User Request ⚠️
+You are working on the following task. Continue until fully complete.
+
+### Original Request:
+{original_request}
+
+### Current Status:
+This is iteration #{iteration}. Your previous response indicated more work is needed.
+Continue from where you left off. Remember to output [CONTINUE: next_action] if more work remains, or [TASK_COMPLETE] when done.
+
+### Previous Hint:
+{previous_hint}
+
+---
+
+Continue working on the task:
+"""
+
+            current_prompt = prompt
+            previous_hint = "Starting task"
+
+            while self._autonomous_iteration < effective_max_iterations:
+                # Check for stop request
+                if self._autonomous_stop_requested:
+                    stop_reason = "user_stop"
+                    logger.info(f"[{self.session_id}] 🛑 Autonomous execution stopped by user")
+                    break
+
+                self._autonomous_iteration += 1
+                logger.info(f"[{self.session_id}] 🔄 Autonomous iteration #{self._autonomous_iteration}")
+
+                # Execute single iteration
+                result = await self.execute(
+                    prompt=current_prompt,
+                    timeout=timeout_per_iteration,
+                    skip_permissions=skip_permissions,
+                    system_prompt=system_prompt,
+                    max_turns=max_turns,
+                    resume=True if self._autonomous_iteration > 1 else None
+                )
+
+                output = result.get("output", "")
+                all_outputs.append(output)
+                final_output = output
+                total_duration_ms += result.get("duration_ms", 0)
+
+                # Call iteration callback if provided
+                if on_iteration_complete:
+                    try:
+                        await on_iteration_complete(self._autonomous_iteration, result, False)
+                    except Exception as e:
+                        logger.warning(f"[{self.session_id}] Callback error: {e}")
+
+                # Check for errors
+                if not result.get("success", False):
+                    error = result.get("error", "Unknown error")
+                    logger.error(f"[{self.session_id}] ❌ Iteration #{self._autonomous_iteration} failed: {error}")
+                    stop_reason = "error"
+                    break
+
+                # Check for task completion
+                if COMPLETE_PATTERN.search(output):
+                    is_complete = True
+                    stop_reason = "complete"
+                    logger.info(f"[{self.session_id}] ✅ Task complete! (iteration #{self._autonomous_iteration})")
+                    break
+
+                # Check for continue pattern
+                continue_match = CONTINUE_PATTERN.search(output)
+                if continue_match:
+                    previous_hint = continue_match.group(1).strip()
+                    logger.info(f"[{self.session_id}] 🔄 Continue detected: {previous_hint}")
+
+                    # Build reminder prompt for next iteration
+                    current_prompt = reminder_template.format(
+                        original_request=self._original_request,
+                        iteration=self._autonomous_iteration + 1,
+                        previous_hint=previous_hint
+                    )
+                else:
+                    # No continue pattern - Claude may have finished or is confused
+                    # Check if output looks like completion (no clear next steps mentioned)
+                    if self._looks_like_completion(output):
+                        is_complete = True
+                        stop_reason = "complete"
+                        logger.info(f"[{self.session_id}] ✅ Task appears complete (no continue signal)")
+                        break
+                    else:
+                        # Continue with a generic reminder
+                        previous_hint = "Continue from where you left off"
+                        current_prompt = reminder_template.format(
+                            original_request=self._original_request,
+                            iteration=self._autonomous_iteration + 1,
+                            previous_hint=previous_hint
+                        )
+                        logger.info(f"[{self.session_id}] ⚠️ No continue pattern, prompting to continue")
+
+            else:
+                # Loop completed without break - max iterations reached
+                stop_reason = "max_iterations"
+                logger.warning(f"[{self.session_id}] ⚠️ Max iterations ({effective_max_iterations}) reached")
+
+        except Exception as e:
+            logger.error(f"[{self.session_id}] ❌ Autonomous execution error: {e}", exc_info=True)
+            stop_reason = "error"
+            final_output = str(e)
+
+        finally:
+            self._autonomous_running = False
+
+        # Build final result
+        result = {
+            "success": stop_reason in ["complete", "max_iterations"],
+            "is_complete": is_complete,
+            "total_iterations": self._autonomous_iteration,
+            "original_request": self._original_request,
+            "final_output": final_output,
+            "all_outputs": all_outputs,
+            "stop_reason": stop_reason,
+            "total_duration_ms": total_duration_ms
+        }
+
+        logger.info(f"[{self.session_id}] 🏁 Autonomous execution finished: {stop_reason} after {self._autonomous_iteration} iterations")
+        return result
+
+    def _looks_like_completion(self, output: str) -> bool:
+        """
+        Heuristic check if output looks like task completion.
+
+        Checks for patterns that suggest the task is done even without
+        explicit [TASK_COMPLETE] marker.
+        """
+        completion_indicators = [
+            "successfully completed",
+            "all done",
+            "task is complete",
+            "finished implementing",
+            "implementation is complete",
+            "all criteria met",
+            "all requirements fulfilled",
+            "work is done",
+        ]
+
+        output_lower = output.lower()
+        for indicator in completion_indicators:
+            if indicator in output_lower:
+                return True
+
+        # If output is very short and doesn't mention more work, might be done
+        if len(output) < 500 and "continue" not in output_lower and "next" not in output_lower:
+            return False  # Actually, short response without clear completion isn't reliable
+
+        return False
 
     def is_alive(self) -> bool:
         """Check if session is active."""

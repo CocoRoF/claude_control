@@ -133,14 +133,22 @@ class CreateSessionRequest(BaseModel):
         description="Claude model to use (e.g., claude-sonnet-4-20250514)"
     )
     max_turns: Optional[int] = Field(
-        default=50,
+        default=100,
         description="Maximum conversation turns (need sufficient turns for autonomous mode)"
+    )
+    timeout: Optional[float] = Field(
+        default=1800.0,
+        description="Default execution timeout per iteration (seconds)"
     )
 
     # Autonomous mode settings
     autonomous: Optional[bool] = Field(
         default=True,
         description="Autonomous mode - Claude performs tasks without asking questions"
+    )
+    autonomous_max_iterations: Optional[int] = Field(
+        default=100,
+        description="Maximum iterations for autonomous self-managing loop (prevents infinite loops)"
     )
     system_prompt: Optional[str] = Field(
         default=None,
@@ -174,6 +182,24 @@ class SessionInfo(BaseModel):
     # Claude-related information
     model: Optional[str] = None
 
+    # Session execution settings (preserved from creation)
+    max_turns: Optional[int] = Field(
+        default=100,
+        description="Maximum conversation turns per execution"
+    )
+    timeout: Optional[float] = Field(
+        default=1800.0,
+        description="Execution timeout per iteration (seconds)"
+    )
+    autonomous: Optional[bool] = Field(
+        default=True,
+        description="Autonomous mode enabled"
+    )
+    autonomous_max_iterations: Optional[int] = Field(
+        default=100,
+        description="Maximum autonomous iterations"
+    )
+
     # Session storage path
     storage_path: Optional[str] = Field(
         default=None,
@@ -203,8 +229,8 @@ class ExecuteRequest(BaseModel):
         description="Prompt to send to Claude"
     )
     timeout: Optional[float] = Field(
-        default=600.0,
-        description="Execution timeout (seconds) - recommend longer timeout for autonomous mode"
+        default=None,
+        description="Execution timeout (seconds) - None uses session default (1800s)"
     )
     skip_permissions: Optional[bool] = Field(
         default=True,
@@ -243,6 +269,23 @@ class ExecuteResponse(BaseModel):
         default=None,
         description="Hint about next step (extracted from [CONTINUE: ...] pattern)"
     )
+    # Autonomous mode fields
+    is_task_complete: bool = Field(
+        default=False,
+        description="Whether the task is complete (detected from [TASK_COMPLETE] pattern)"
+    )
+    iteration_count: Optional[int] = Field(
+        default=None,
+        description="Current iteration count in autonomous mode"
+    )
+    total_iterations: Optional[int] = Field(
+        default=None,
+        description="Total iterations completed in autonomous execution"
+    )
+    original_request: Optional[str] = Field(
+        default=None,
+        description="Original user request (for autonomous mode tracking)"
+    )
 
 
 class StorageFile(BaseModel):
@@ -268,3 +311,80 @@ class StorageFileContent(BaseModel):
     content: str
     size: int
     encoding: str = "utf-8"
+
+
+class AutonomousExecuteRequest(BaseModel):
+    """
+    Autonomous execution request.
+
+    Starts a self-managing autonomous execution loop.
+    Claude will continue working on the task until it's complete,
+    periodically reminding itself of the original request.
+    """
+    prompt: str = Field(
+        ...,
+        description="Initial user request to complete autonomously"
+    )
+    timeout_per_iteration: Optional[float] = Field(
+        default=None,
+        description="Timeout for each iteration (seconds) - None uses session default (1800s)"
+    )
+    max_iterations: Optional[int] = Field(
+        default=None,
+        description="Maximum number of self-managing iterations - None uses session default (100)"
+    )
+    skip_permissions: Optional[bool] = Field(
+        default=True,
+        description="Skip permission prompts (required for autonomous mode)"
+    )
+    system_prompt: Optional[str] = Field(
+        default=None,
+        description="Additional system prompt for this execution"
+    )
+    max_turns: Optional[int] = Field(
+        default=None,
+        description="Maximum turns per iteration (None uses session setting)"
+    )
+
+
+class AutonomousExecuteResponse(BaseModel):
+    """
+    Autonomous execution response.
+
+    Contains the final result after all autonomous iterations complete.
+    """
+    success: bool
+    session_id: str
+    is_complete: bool = Field(
+        description="Whether the task was completed successfully"
+    )
+    total_iterations: int = Field(
+        description="Total number of iterations executed"
+    )
+    original_request: str = Field(
+        description="The original user request"
+    )
+    final_output: Optional[str] = Field(
+        default=None,
+        description="Output from the final iteration"
+    )
+    all_outputs: Optional[List[str]] = Field(
+        default=None,
+        description="Outputs from all iterations (if requested)"
+    )
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message if execution failed"
+    )
+    total_duration_ms: Optional[int] = Field(
+        default=None,
+        description="Total execution time across all iterations (milliseconds)"
+    )
+    total_cost_usd: Optional[float] = Field(
+        default=None,
+        description="Total API cost across all iterations (USD)"
+    )
+    stop_reason: str = Field(
+        default="unknown",
+        description="Reason for stopping: 'complete', 'max_iterations', 'error', 'user_stop'"
+    )

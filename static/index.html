@@ -176,22 +176,23 @@
                                         <input type="checkbox" id="skip-permissions" checked>
                                         Skip Permissions
                                     </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="auto-continue">
-                                        Auto Continue
-                                    </label>
+                                    <span class="session-mode-badge" id="session-mode-badge">Autonomous</span>
                                     <label class="input-label">
                                         Timeout (s):
-                                        <input type="number" id="command-timeout" value="600" min="1" max="3600">
+                                        <input type="number" id="command-timeout" value="1800" min="1" max="7200" readonly title="Set when creating session">
                                     </label>
                                     <label class="input-label">
                                         Max Turns:
-                                        <input type="number" id="command-max-turns" value="100" min="1" max="500">
+                                        <input type="number" id="command-max-turns" value="100" min="1" max="500" readonly title="Set when creating session">
+                                    </label>
+                                    <label class="input-label">
+                                        Max Iterations:
+                                        <input type="number" id="autonomous-max-iterations" value="100" min="1" max="500" readonly title="Set when creating session">
                                     </label>
                                 </div>
                                 <div class="command-actions">
                                     <button class="btn btn-primary" id="execute-btn" onclick="executeCommand()">Execute</button>
-                                    <button class="btn btn-danger hidden" id="stop-btn" onclick="stopAutoContinue()">Stop</button>
+                                    <button class="btn btn-danger hidden" id="stop-btn" onclick="stopExecution()">Stop</button>
                                     <button class="btn btn-secondary" onclick="clearOutput()">Clear</button>
                                 </div>
                             </div>
@@ -264,7 +265,7 @@
                                     </label>
                                     <label class="input-label">
                                         Timeout (s):
-                                        <input type="number" id="batch-timeout" value="600" min="1" max="3600">
+                                        <input type="number" id="batch-timeout" value="1800" min="1" max="7200">
                                     </label>
                                 </div>
                                 <button class="btn btn-primary" onclick="executeBatchCommand()">Execute Batch</button>
@@ -339,6 +340,14 @@
                     <div class="form-group">
                         <label for="new-session-max-turns">Max Turns</label>
                         <input type="number" id="new-session-max-turns" value="100" min="1" max="500">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-session-timeout">Timeout (seconds)</label>
+                        <input type="number" id="new-session-timeout" value="1800" min="60" max="7200">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-session-max-iterations">Max Iterations (Autonomous)</label>
+                        <input type="number" id="new-session-max-iterations" value="100" min="1" max="500">
                     </div>
                     <div class="form-group">
                         <label class="checkbox-label">
