@@ -47,18 +47,226 @@ Claude Control enables simultaneous management and control of multiple Claude Co
 
 ### Prerequisites
 
-- Python 3.11+
-- Claude CLI (`npm install -g @anthropic-ai/claude-code`)
-- Redis (optional, required for multi-pod environments)
+| Requirement | Version | Description |
+|-------------|---------|-------------|
+| Python | 3.11+ | Main runtime |
+| Node.js | 18+ | Required for Claude CLI and MCP servers |
+| npm | 9+ | Package manager (comes with Node.js) |
+| Git | 2.30+ | Version control |
+| GitHub CLI | 2.0+ | For PR/Issue automation (optional) |
+| Redis | 6+ | Multi-pod session sharing (optional) |
 
-### Install
+### 1. Install Node.js
+
+#### Windows
+```powershell
+# Option 1: Using winget (recommended)
+winget install OpenJS.NodeJS.LTS
+
+# Option 2: Using Chocolatey
+choco install nodejs-lts
+
+# Option 3: Download installer from https://nodejs.org/
+```
+
+#### macOS
+```bash
+# Option 1: Using Homebrew (recommended)
+brew install node@20
+
+# Option 2: Using nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+nvm use 20
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Using NodeSource repository
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Or using nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+```
+
+#### Linux (RHEL/CentOS/Fedora)
+```bash
+# Using NodeSource repository
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo yum install -y nodejs
+```
+
+### 2. Install Claude CLI
 
 ```bash
+# All platforms (requires Node.js)
+npm install -g @anthropic-ai/claude-code
+
+# Verify installation
+claude --version
+```
+
+### 3. Install GitHub CLI (for PR/Issue automation)
+
+#### Windows
+```powershell
+# Option 1: Using winget (recommended)
+winget install GitHub.cli
+
+# Option 2: Using Chocolatey
+choco install gh
+
+# Option 3: Using Scoop
+scoop install gh
+```
+
+#### macOS
+```bash
+# Using Homebrew
+brew install gh
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Add GitHub CLI repository
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update
+sudo apt install gh
+```
+
+#### Linux (RHEL/CentOS/Fedora)
+```bash
+sudo dnf install gh
+# or
+sudo yum install gh
+```
+
+### 4. Install Python 3.11+
+
+#### Windows
+```powershell
+# Using winget
+winget install Python.Python.3.11
+
+# Or download from https://www.python.org/downloads/
+```
+
+#### macOS
+```bash
+# Using Homebrew
+brew install python@3.11
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+sudo apt update
+sudo apt install python3.11 python3.11-venv python3-pip
+```
+
+### 5. Install Git
+
+#### Windows
+```powershell
+winget install Git.Git
+```
+
+#### macOS
+```bash
+# Git comes with Xcode Command Line Tools
+xcode-select --install
+# Or using Homebrew
+brew install git
+```
+
+#### Linux
+```bash
+# Ubuntu/Debian
+sudo apt install git
+
+# RHEL/CentOS/Fedora
+sudo dnf install git
+```
+
+### 6. Install Redis (Optional - for multi-pod)
+
+#### Windows
+```powershell
+# Using Docker (recommended for Windows)
+docker run -d --name redis -p 6379:6379 redis:alpine
+
+# Or using WSL2
+wsl --install
+# Then install Redis inside WSL
+```
+
+#### macOS
+```bash
+brew install redis
+brew services start redis
+```
+
+#### Linux
+```bash
+# Ubuntu/Debian
+sudo apt install redis-server
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+# RHEL/CentOS/Fedora
+sudo dnf install redis
+sudo systemctl enable redis
+sudo systemctl start redis
+```
+
+### 7. Install Claude Control
+
+```bash
+# Clone repository
+git clone https://github.com/your-org/claude-control.git
+cd claude-control
+
+# Create virtual environment (recommended)
+python -m venv venv
+
+# Activate virtual environment
+# Windows PowerShell:
+.\venv\Scripts\Activate.ps1
+# Windows CMD:
+.\venv\Scripts\activate.bat
+# macOS/Linux:
+source venv/bin/activate
+
 # Install dependencies
 pip install -r requirements.txt
 
 # Or using pyproject.toml
 pip install -e .
+```
+
+### 8. Configure Environment
+
+```bash
+# Copy example config
+cp .env.example .env
+
+# Edit .env with your settings
+# Required: ANTHROPIC_API_KEY
+# Optional: GITHUB_TOKEN (for PR automation)
+```
+
+### Quick Verification
+
+```bash
+# Check all installations
+node --version      # Should be v18+
+npm --version       # Should be v9+
+python --version    # Should be 3.11+
+git --version       # Should be 2.30+
+gh --version        # Should be 2.0+ (optional)
+claude --version    # Claude CLI installed
 ```
 
 ## Environment Variables
@@ -73,6 +281,7 @@ pip install -e .
 | `REDIS_PASSWORD` | Redis password | - |
 | `CLAUDE_STORAGE_ROOT` | Session storage root path | OS-dependent* |
 | `ANTHROPIC_API_KEY` | Anthropic API key (required) | - |
+| `GITHUB_TOKEN` | GitHub Personal Access Token (for PR/Issue automation) | - |
 | `CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS` | Autonomous mode - skip permission prompts | `true` |
 
 *Default storage paths:
@@ -181,16 +390,41 @@ Claude Control can automate GitHub workflows - clone repos, create branches, mak
    ```
 
 2. **GitHub Authentication** (choose one):
+
+   **Option A: GITHUB_TOKEN in .env (Recommended for automation)**
    ```bash
-   # Option 1: GitHub CLI (recommended)
+   # Add to .env file
+   GITHUB_TOKEN=ghp_your_personal_access_token_here
+   ```
+   Generate token at: https://github.com/settings/tokens
+   Required scopes: `repo`, `workflow`
+
+   > Note: Claude Control automatically sets `GH_TOKEN` from `GITHUB_TOKEN` on startup,
+   > enabling `gh` CLI commands without manual authentication.
+
+   **Option B: GitHub CLI Interactive Login**
+   ```bash
    gh auth login
+   # Follow the prompts to authenticate
+   ```
 
-   # Option 2: SSH keys
+   **Option C: SSH Keys**
+   ```bash
+   # Generate SSH key
    ssh-keygen -t ed25519 -C "your.email@example.com"
-   # Add public key to GitHub Settings > SSH Keys
 
-   # Option 3: HTTPS with credential manager
+   # Add to ssh-agent
+   eval "$(ssh-agent -s)"
+   ssh-add ~/.ssh/id_ed25519
+
+   # Copy public key and add to GitHub Settings > SSH Keys
+   cat ~/.ssh/id_ed25519.pub
+   ```
+
+   **Option D: HTTPS with Credential Manager (Windows)**
+   ```powershell
    git config --global credential.helper manager
+   # Credentials will be prompted on first push
    ```
 
 3. **Enable Autonomous Mode** in `.env`:

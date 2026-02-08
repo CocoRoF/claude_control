@@ -34,6 +34,13 @@ try:
 except ImportError:
     print("⚠️  python-dotenv not installed. Environment variables must be set manually.")
 
+# Configure GitHub CLI authentication from GITHUB_TOKEN
+# This allows gh CLI to work without interactive login
+github_token = os.environ.get('GITHUB_TOKEN')
+if github_token:
+    os.environ['GH_TOKEN'] = github_token
+    print("✅ GitHub CLI configured with GITHUB_TOKEN")
+
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO,
