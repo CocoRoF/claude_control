@@ -380,12 +380,17 @@
         _setupInputHandlers() {
             const canvas = this.renderer.domElement;
 
+            // Raycaster for avatar click detection
+            this._raycaster = new THREE.Raycaster();
+            this._mouse = new THREE.Vector2();
+
             // Mouse down
             this._onPointerDown = (e) => {
                 if (e.button === 0) {
                     // Left mouse - pan
                     this.isPanning = true;
                     this._panStart = { x: e.clientX, y: e.clientY };
+                    this._clickStart = { x: e.clientX, y: e.clientY }; // For click detection
                     this._targetStart.copy(this.cameraTarget);
                     canvas.style.cursor = 'move';
                 } else if (e.button === 2) {
@@ -434,6 +439,19 @@
 
             // Mouse up
             this._onPointerUp = (e) => {
+                // Check for click (not drag) on left mouse button
+                if (e.button === 0 && this._clickStart) {
+                    const dx = e.clientX - this._clickStart.x;
+                    const dy = e.clientY - this._clickStart.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    // If mouse moved less than 5px, treat as click
+                    if (dist < 5) {
+                        this._handleAvatarClick(e);
+                    }
+                    this._clickStart = null;
+                }
+
                 if (e.button === 0) {
                     this.isPanning = false;
                 } else if (e.button === 2) {
@@ -471,6 +489,45 @@
             canvas.addEventListener('wheel', this._onWheel, { passive: false });
 
             debugLog('Input handlers setup complete');
+        }
+
+        /**
+         * Handle click on avatar
+         * @private
+         */
+        _handleAvatarClick(e) {
+            if (!this.avatarSystem || !this.avatarSystem.avatars) return;
+
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            this._mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            this._mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+            this._raycaster.setFromCamera(this._mouse, this.camera);
+
+            // Collect all avatar meshes
+            const avatarMeshes = [];
+            for (const [sessionId, avatarData] of this.avatarSystem.avatars) {
+                if (avatarData.container) {
+                    avatarData.container.traverse((child) => {
+                        if (child.isMesh) {
+                            child.userData.sessionId = sessionId;
+                            avatarMeshes.push(child);
+                        }
+                    });
+                }
+            }
+
+            const intersects = this._raycaster.intersectObjects(avatarMeshes, false);
+
+            if (intersects.length > 0) {
+                const sessionId = intersects[0].object.userData.sessionId;
+                if (sessionId) {
+                    debugLog('Avatar clicked:', sessionId);
+                    document.dispatchEvent(new CustomEvent('playground-avatar-click', {
+                        detail: { sessionId }
+                    }));
+                }
+            }
         }
 
         _onResize() {

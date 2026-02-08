@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from controller.claude_controller import router as claude_router, session_manager
 from controller.command_controller import router as command_router
 from service.redis.redis_client import RedisClient, get_redis_client
@@ -200,15 +200,8 @@ app.add_middleware(SessionRoutingMiddleware)
 
 @app.get("/")
 async def root():
-    """Health check"""
-    pod_info = get_pod_info()
-    return {
-        "service": "Claude Control",
-        "status": "running",
-        "pod_name": pod_info.pod_name,
-        "pod_ip": pod_info.pod_ip,
-        "sessions_count": len(session_manager.sessions)
-    }
+    """Redirect to dashboard"""
+    return RedirectResponse(url="/dashboard")
 
 
 @app.get("/health")

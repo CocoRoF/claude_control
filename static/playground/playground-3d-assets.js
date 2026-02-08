@@ -55,7 +55,11 @@
             typeE: { pack: 'suburban', file: 'building-type-e.glb' },
             typeF: { pack: 'suburban', file: 'building-type-f.glb' },
             typeG: { pack: 'suburban', file: 'building-type-g.glb' },
-            typeH: { pack: 'suburban', file: 'building-type-h.glb' }
+            typeH: { pack: 'suburban', file: 'building-type-h.glb' },
+            // Path stones (ground tiles)
+            pathStonesShort: { pack: 'suburban', file: 'path-stones-short.glb' },
+            pathStonesLong: { pack: 'suburban', file: 'path-stones-long.glb' },
+            pathStonesMessy: { pack: 'suburban', file: 'path-stones-messy.glb' }
         },
 
         // Roads
@@ -260,9 +264,11 @@
                 'building/a', 'building/b', 'building/c', 'building/d',
                 'building/e', 'building/f', 'building/g', 'building/h',
                 'building/skyscraperA', 'building/skyscraperB',
-                'road/straight', 'road/bend', 'road/crossing', 'road/crossroad', 'road/intersection',
+                'road/straight', 'road/bend', 'road/crossing', 'road/crossroad', 'road/intersection', 'road/end',
                 'tile/low',
                 'nature/treeLarge', 'nature/treeSmall', 'nature/planter',
+                // Suburban path stones
+                'suburban/pathStonesShort', 'suburban/pathStonesLong', 'suburban/pathStonesMessy',
                 // Park assets from survival kit
                 'park/tree', 'park/treeTall', 'park/treeAutumn', 'park/treeAutumnTall',
                 'park/treeTrunk', 'park/treeLog', 'park/treeLogSmall',
@@ -277,7 +283,9 @@
                 'minigolf/open', 'minigolf/block', 'minigolf/blockBorders',
                 'minigolf/corner', 'minigolf/innerCorner', 'minigolf/side', 'minigolf/end',
                 'minigolf/hillRound', 'minigolf/bump', 'minigolf/crest',
-                'minigolf/flagGreen', 'minigolf/windmill'
+                'minigolf/flagGreen', 'minigolf/windmill',
+                // Mini-market floor tiles
+                'market/floor'
             ];
 
             const assets = [];

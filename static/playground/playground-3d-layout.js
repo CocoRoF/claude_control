@@ -23,83 +23,77 @@
 
     // ==================== City Grid Definition ====================
     // Legend:
+    //
+    // === ROTATION SYSTEM ===
+    // All tiles support rotation suffix: 1=0°, 2=90°, 3=180°, 4=270°
+    // If no suffix, defaults to 1 (0° rotation)
+    // Example: 'PS' = 'PS1' = 0°, 'PS2' = 90°, 'PS3' = 180°, 'PS4' = 270°
+    //
     // === Roads ===
     // 'R' = Road straight (vertical, Z-axis direction)
     // 'H' = Road straight (horizontal, X-axis direction)
     // '+' = Crossroad (4-way intersection)
+    // 'T' = T-intersection (T1-T4 for rotation)
+    // 'L' = L-Bend/Corner (L1-L4 for rotation)
+    // 'E' = Road end/dead-end (E1-E4 for rotation)
     //
-    // === T-Intersection (3-way, one side blocked) ===
-    // 'T1' = T-intersection, North blocked  ┬  (opens to S, E, W)
-    // 'T2' = T-intersection, South blocked  ┴  (opens to N, E, W)
-    // 'T3' = T-intersection, East blocked   ├  (opens to N, S, W)
-    // 'T4' = T-intersection, West blocked   ┤  (opens to N, S, E)
+    // === Ground Tiles ===
+    // 'B' = Building slot (concrete)
+    // '.' = Empty ground tile (concrete)
+    // 'P' = Park/nature area (minigolf grass)
+    // 'G' = Green space / small garden (minigolf grass)
+    // 'M' = Market floor tile (checkered)
+    // 'C' = Minigolf corner tile (C1-C4 for rotation)
+    // 'S' = Minigolf side tile (S1-S4 for rotation)
     //
-    // === L-Bend/Corner (2-way, connects two adjacent directions) ===
-    // 'L1' = Bend connecting South + East   └  (bottom-left corner)
-    // 'L2' = Bend connecting South + West   ┘  (bottom-right corner)
-    // 'L3' = Bend connecting North + West   ┐  (top-right corner)
-    // 'L4' = Bend connecting North + East   ┌  (top-left corner)
-    //
-    // === Minigolf Grass Tiles (with rotation indicator) ===
-    // 'C1' = Corner tile, rotation 0°    (grass edge at South+East, └ shape)
-    // 'C2' = Corner tile, rotation 90°   (grass edge at South+West, ┘ shape)
-    // 'C3' = Corner tile, rotation 180°  (grass edge at North+West, ┐ shape)
-    // 'C4' = Corner tile, rotation 270°  (grass edge at North+East, ┌ shape)
-    // 'S1' = Side tile, rotation 0°      (grass edge at North)
-    // 'S2' = Side tile, rotation 90°     (grass edge at East)
-    // 'S3' = Side tile, rotation 180°    (grass edge at South)
-    // 'S4' = Side tile, rotation 270°    (grass edge at West)
-    //
-    // === Non-Road ===
-    // 'B' = Building slot
-    // 'P' = Park/nature area (large nature park)
-    // 'G' = Green space / small garden
-    // 'M' = Market floor tile (checkered tile from mini-market)
-    // '.' = Empty ground tile
+    // === Path Stones (from suburban kit) ===
+    // 'PS' = Path stones short (PS1-PS4 for rotation)
+    // 'PL' = Path stones long (PL1-PL4 for rotation)
+    // 'PM' = Path stones messy (PM1-PM4 for rotation)
 
     const CITY_GRID = [
         // Z=0 (back row)
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
+        ['B', 'B', 'E4', 'B', 'B', 'E4', 'B', 'B', 'E4', 'B', 'B', 'E4', 'B', 'B', 'E4', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
         // Z=1
         ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=2 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'S3', 'P', 'P', 'P', 'P', 'S1'],
+        ['E', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=3
         ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=4
         ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=5 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'S3', 'P', 'P', 'P', 'P', 'S1'],
+        ['E', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'T4', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=6
         ['B', 'B', 'H', 'B', 'B', 'H', 'C3', 'C2', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'S3', 'P', 'P', 'P', 'P', 'S1'],
         // Z=7
         ['B', 'B', 'H', 'B', 'B', 'H', 'C4', 'C1', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
         // Z=8 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R'],
+        ['E', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'E3'],
         // Z=9
         ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
         // Z=10
         ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
         // Z=11 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R'],
+        ['E', 'R', '+', 'R', 'R', 'T3', 'R', 'R', 'T3', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'E3'],
         // Z=12
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
         // Z=13
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
+        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'B', 'B', 'B', 'B'],
         // Z=14 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R'],
+        ['E', 'R', 'T4', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'T2', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'E3'],
         // Z=15
-        ['C3', 'C2', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
+        ['C3', 'C2', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'M', 'M', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
         // Z=16
-        ['C4', 'C1', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
+        ['C4', 'C1', 'H', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'M', 'H', 'M', 'M', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
         // Z=17 (road row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R'],
+        ['E', 'R', 'T4', 'M', 'M', 'M', 'M', 'M', 'L2', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'E3'],
         // Z=18
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
+        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C3', 'S2', 'S2', 'S2', 'S2', 'C2'],
         // Z=19
-        ['B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
+        ['B', 'B', 'H', 'M', 'M', 'M', 'M', 'M', 'H', 'B', 'B', 'H', 'B', 'B', 'H', 'C4', 'S4', 'S4', 'S4', 'S4', 'C1'],
         // Z=20 (front row)
-        ['R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', '+', 'R', 'R', 'R', 'R', 'R', 'R']
+        ['E', 'R', 'T3', 'R', 'R', 'R', 'R', 'R', 'T3', 'R', 'R', 'T3', 'R', 'R', 'T3', 'R', 'R', 'R', 'R', 'R', 'E3']
     ];
 
     // ==================== Building Definitions ====================
@@ -116,7 +110,7 @@
         { gx: 1, gz: 4, type: 'building', name: 'g', rotation: 0 },
 
         // ===== Zone B: Second column (X=3-4) =====
-        { gx: 3, gz: 0, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        { gx: 3, gz: 0, type: 'building', name: 'i', rotation: Math.PI / 2 },
         { gx: 4, gz: 0, type: 'building', name: 'h', rotation: Math.PI / 2 },
         { gx: 3, gz: 1, type: 'building', name: 'a', rotation: Math.PI / 2 },
         { gx: 4, gz: 1, type: 'building', name: 'b', rotation: Math.PI / 2 },
@@ -129,7 +123,7 @@
         { gx: 6, gz: 0, type: 'building', name: 'f', rotation: 0 },
         { gx: 7, gz: 0, type: 'building', name: 'g', rotation: 0 },
         { gx: 6, gz: 1, type: 'building', name: 'h', rotation: 0 },
-        { gx: 7, gz: 1, type: 'building', name: 'skyscraperB', rotation: 0 },
+        { gx: 7, gz: 1, type: 'building', name: 'j', rotation: 0 },
         { gx: 6, gz: 3, type: 'building', name: 'a', rotation: 0 },
         { gx: 7, gz: 3, type: 'building', name: 'b', rotation: 0 },
         { gx: 6, gz: 4, type: 'building', name: 'c', rotation: 0 },
@@ -143,7 +137,7 @@
         { gx: 9, gz: 3, type: 'building', name: 'h', rotation: Math.PI },
         { gx: 10, gz: 3, type: 'building', name: 'a', rotation: Math.PI },
         { gx: 9, gz: 4, type: 'building', name: 'b', rotation: Math.PI },
-        { gx: 10, gz: 4, type: 'building', name: 'skyscraperB', rotation: Math.PI },
+        { gx: 10, gz: 4, type: 'building', name: 'k', rotation: Math.PI },
 
         // ===== Zone E: Fifth column (X=12-13) =====
         { gx: 12, gz: 0, type: 'building', name: 'c', rotation: -Math.PI / 2 },
@@ -161,7 +155,7 @@
         { gx: 0, gz: 7, type: 'building', name: 'd', rotation: 0 },
         { gx: 1, gz: 7, type: 'building', name: 'e', rotation: 0 },
         { gx: 3, gz: 6, type: 'building', name: 'f', rotation: Math.PI / 2 },
-        { gx: 4, gz: 6, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        { gx: 4, gz: 6, type: 'building', name: 'l', rotation: Math.PI / 2 },
         { gx: 3, gz: 7, type: 'building', name: 'g', rotation: Math.PI / 2 },
         { gx: 4, gz: 7, type: 'building', name: 'h', rotation: Math.PI / 2 },
         // Garden at gx=6-7, gz=6-7
@@ -176,7 +170,7 @@
         { gx: 13, gz: 7, type: 'building', name: 'g', rotation: -Math.PI / 2 },
 
         // ===== Zone F: Lower section (Z=9-10, Z=12-13) =====
-        { gx: 0, gz: 9, type: 'building', name: 'skyscraperB', rotation: 0 },
+        { gx: 0, gz: 9, type: 'building', name: 'skyscraperA', rotation: 0 },
         { gx: 1, gz: 9, type: 'building', name: 'h', rotation: 0 },
         { gx: 0, gz: 10, type: 'building', name: 'a', rotation: 0 },
         { gx: 1, gz: 10, type: 'building', name: 'b', rotation: 0 },
@@ -191,51 +185,46 @@
         { gx: 9, gz: 9, type: 'building', name: 'b', rotation: Math.PI },
         { gx: 10, gz: 9, type: 'building', name: 'c', rotation: Math.PI },
         { gx: 9, gz: 10, type: 'building', name: 'd', rotation: Math.PI },
-        { gx: 10, gz: 10, type: 'building', name: 'skyscraperB', rotation: Math.PI },
+        { gx: 10, gz: 10, type: 'building', name: 'skyscraperA', rotation: Math.PI },
         { gx: 12, gz: 9, type: 'building', name: 'e', rotation: -Math.PI / 2 },
         { gx: 13, gz: 9, type: 'building', name: 'f', rotation: -Math.PI / 2 },
         { gx: 12, gz: 10, type: 'building', name: 'g', rotation: -Math.PI / 2 },
         { gx: 13, gz: 10, type: 'building', name: 'h', rotation: -Math.PI / 2 },
 
         // Bottom rows continuing
-        { gx: 0, gz: 12, type: 'building', name: 'a', rotation: 0 },
-        { gx: 1, gz: 12, type: 'building', name: 'skyscraperA', rotation: 0 },
-        { gx: 0, gz: 13, type: 'building', name: 'b', rotation: 0 },
-        { gx: 1, gz: 13, type: 'building', name: 'c', rotation: 0 },
-        { gx: 3, gz: 12, type: 'building', name: 'd', rotation: Math.PI / 2 },
-        { gx: 4, gz: 12, type: 'building', name: 'e', rotation: Math.PI / 2 },
-        { gx: 3, gz: 13, type: 'building', name: 'f', rotation: Math.PI / 2 },
+        // { gx: 0, gz: 12, type: 'building', name: 'a', rotation: 0 },
+        // { gx: 1, gz: 12, type: 'building', name: 'skyscraperA', rotation: 0 },
+        // { gx: 0, gz: 13, type: 'building', name: 'b', rotation: 0 },
+        // { gx: 1, gz: 13, type: 'building', name: 'c', rotation: 0 },
+        // { gx: 3, gz: 12, type: 'building', name: 'd', rotation: Math.PI / 2 },
+        // { gx: 4, gz: 12, type: 'building', name: 'e', rotation: Math.PI / 2 },
+        // { gx: 3, gz: 13, type: 'building', name: 'f', rotation: Math.PI / 2 },
+        { gx: 3, gz: 12, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        { gx: 3, gz: 13, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        { gx: 4, gz: 12, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
         { gx: 4, gz: 13, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
-        { gx: 6, gz: 12, type: 'building', name: 'g', rotation: 0 },
-        { gx: 7, gz: 12, type: 'building', name: 'h', rotation: 0 },
-        { gx: 6, gz: 13, type: 'building', name: 'a', rotation: 0 },
-        { gx: 7, gz: 13, type: 'building', name: 'b', rotation: 0 },
-        { gx: 9, gz: 12, type: 'building', name: 'c', rotation: Math.PI },
-        { gx: 10, gz: 12, type: 'building', name: 'd', rotation: Math.PI },
-        { gx: 9, gz: 13, type: 'building', name: 'e', rotation: Math.PI },
-        { gx: 10, gz: 13, type: 'building', name: 'skyscraperA', rotation: Math.PI },
+        { gx: 3, gz: 15, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        { gx: 3, gz: 16, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        { gx: 4, gz: 15, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        { gx: 4, gz: 16, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
+        // { gx: 6, gz: 12, type: 'building', name: 'g', rotation: 0 },
+        // { gx: 7, gz: 12, type: 'building', name: 'h', rotation: 0 },
+        // { gx: 6, gz: 13, type: 'building', name: 'a', rotation: 0 },
+        // { gx: 7, gz: 13, type: 'building', name: 'b', rotation: 0 },
+        // { gx: 9, gz: 12, type: 'building', name: 'c', rotation: Math.PI },
+        // { gx: 10, gz: 12, type: 'building', name: 'd', rotation: Math.PI },
+        // { gx: 9, gz: 13, type: 'building', name: 'e', rotation: Math.PI },
+        // { gx: 10, gz: 13, type: 'building', name: 'skyscraperA', rotation: Math.PI },
         { gx: 12, gz: 12, type: 'building', name: 'f', rotation: -Math.PI / 2 },
         { gx: 13, gz: 12, type: 'building', name: 'g', rotation: -Math.PI / 2 },
         { gx: 12, gz: 13, type: 'building', name: 'h', rotation: -Math.PI / 2 },
         { gx: 13, gz: 13, type: 'building', name: 'a', rotation: -Math.PI / 2 },
 
         // ===== Rows with garden at front-left (Z=15-16, skipping X=0-1) =====
-        { gx: 3, gz: 15, type: 'building', name: 'b', rotation: Math.PI / 2 },
-        { gx: 4, gz: 15, type: 'building', name: 'c', rotation: Math.PI / 2 },
-        { gx: 3, gz: 16, type: 'building', name: 'd', rotation: Math.PI / 2 },
-        { gx: 4, gz: 16, type: 'building', name: 'skyscraperB', rotation: Math.PI / 2 },
-        { gx: 6, gz: 15, type: 'building', name: 'e', rotation: 0 },
-        { gx: 7, gz: 15, type: 'building', name: 'f', rotation: 0 },
-        { gx: 6, gz: 16, type: 'building', name: 'g', rotation: 0 },
-        { gx: 7, gz: 16, type: 'building', name: 'h', rotation: 0 },
-        { gx: 9, gz: 15, type: 'building', name: 'a', rotation: Math.PI },
-        { gx: 10, gz: 15, type: 'building', name: 'skyscraperA', rotation: Math.PI },
-        { gx: 9, gz: 16, type: 'building', name: 'b', rotation: Math.PI },
-        { gx: 10, gz: 16, type: 'building', name: 'c', rotation: Math.PI },
         { gx: 12, gz: 15, type: 'building', name: 'd', rotation: -Math.PI / 2 },
         { gx: 13, gz: 15, type: 'building', name: 'e', rotation: -Math.PI / 2 },
         { gx: 12, gz: 16, type: 'building', name: 'f', rotation: -Math.PI / 2 },
-        { gx: 13, gz: 16, type: 'building', name: 'skyscraperB', rotation: -Math.PI / 2 },
+        { gx: 13, gz: 16, type: 'building', name: 'g', rotation: -Math.PI / 2 },
 
         // ===== Bottom rows (Z=18-19) =====
         { gx: 0, gz: 18, type: 'building', name: 'g', rotation: 0 },
@@ -246,10 +235,6 @@
         { gx: 4, gz: 18, type: 'building', name: 'c', rotation: Math.PI / 2 },
         { gx: 3, gz: 19, type: 'building', name: 'd', rotation: Math.PI / 2 },
         { gx: 4, gz: 19, type: 'building', name: 'e', rotation: Math.PI / 2 },
-        { gx: 6, gz: 18, type: 'building', name: 'f', rotation: 0 },
-        { gx: 7, gz: 18, type: 'building', name: 'skyscraperB', rotation: 0 },
-        { gx: 6, gz: 19, type: 'building', name: 'g', rotation: 0 },
-        { gx: 7, gz: 19, type: 'building', name: 'h', rotation: 0 },
         { gx: 9, gz: 18, type: 'building', name: 'a', rotation: Math.PI },
         { gx: 10, gz: 18, type: 'building', name: 'b', rotation: Math.PI },
         { gx: 9, gz: 19, type: 'building', name: 'c', rotation: Math.PI },
@@ -260,36 +245,36 @@
         { gx: 13, gz: 19, type: 'building', name: 'g', rotation: -Math.PI / 2 },
 
         // Right side buildings (X=15-16, various Z not in park)
-        { gx: 15, gz: 9, type: 'building', name: 'h', rotation: -Math.PI / 2 },
-        { gx: 16, gz: 9, type: 'building', name: 'skyscraperB', rotation: -Math.PI / 2 },
-        { gx: 17, gz: 9, type: 'building', name: 'a', rotation: -Math.PI / 2 },
-        { gx: 18, gz: 9, type: 'building', name: 'b', rotation: -Math.PI / 2 },
-        { gx: 19, gz: 9, type: 'building', name: 'c', rotation: -Math.PI / 2 },
-        { gx: 20, gz: 9, type: 'building', name: 'd', rotation: -Math.PI / 2 },
-        { gx: 15, gz: 10, type: 'building', name: 'e', rotation: -Math.PI / 2 },
-        { gx: 16, gz: 10, type: 'building', name: 'f', rotation: -Math.PI / 2 },
-        { gx: 17, gz: 10, type: 'building', name: 'skyscraperA', rotation: -Math.PI / 2 },
-        { gx: 18, gz: 10, type: 'building', name: 'g', rotation: -Math.PI / 2 },
-        { gx: 19, gz: 10, type: 'building', name: 'h', rotation: -Math.PI / 2 },
-        { gx: 20, gz: 10, type: 'building', name: 'a', rotation: -Math.PI / 2 },
+        // { gx: 15, gz: 9, type: 'building', name: 'h', rotation: -Math.PI / 2 },
+        // { gx: 16, gz: 9, type: 'building', name: 'skyscraperB', rotation: -Math.PI / 2 },
+        // { gx: 17, gz: 9, type: 'building', name: 'a', rotation: -Math.PI / 2 },
+        // { gx: 18, gz: 9, type: 'building', name: 'b', rotation: -Math.PI / 2 },
+        // { gx: 19, gz: 9, type: 'building', name: 'c', rotation: -Math.PI / 2 },
+        // { gx: 20, gz: 9, type: 'building', name: 'd', rotation: -Math.PI / 2 },
+        // { gx: 15, gz: 10, type: 'building', name: 'e', rotation: -Math.PI / 2 },
+        // { gx: 16, gz: 10, type: 'building', name: 'f', rotation: -Math.PI / 2 },
+        // { gx: 17, gz: 10, type: 'building', name: 'skyscraperA', rotation: -Math.PI / 2 },
+        // { gx: 18, gz: 10, type: 'building', name: 'g', rotation: -Math.PI / 2 },
+        // { gx: 19, gz: 10, type: 'building', name: 'h', rotation: -Math.PI / 2 },
+        // { gx: 20, gz: 10, type: 'building', name: 'a', rotation: -Math.PI / 2 },
 
-        { gx: 15, gz: 12, type: 'building', name: 'b', rotation: -Math.PI / 2 },
-        { gx: 16, gz: 12, type: 'building', name: 'c', rotation: -Math.PI / 2 },
-        { gx: 17, gz: 12, type: 'building', name: 'd', rotation: -Math.PI / 2 },
-        { gx: 18, gz: 12, type: 'building', name: 'skyscraperB', rotation: -Math.PI / 2 },
-        { gx: 19, gz: 12, type: 'building', name: 'e', rotation: -Math.PI / 2 },
-        { gx: 20, gz: 12, type: 'building', name: 'f', rotation: -Math.PI / 2 },
-        { gx: 15, gz: 13, type: 'building', name: 'g', rotation: -Math.PI / 2 },
-        { gx: 16, gz: 13, type: 'building', name: 'h', rotation: -Math.PI / 2 },
-        { gx: 17, gz: 13, type: 'building', name: 'a', rotation: -Math.PI / 2 },
-        { gx: 18, gz: 13, type: 'building', name: 'b', rotation: -Math.PI / 2 },
-        { gx: 19, gz: 13, type: 'building', name: 'skyscraperA', rotation: -Math.PI / 2 },
-        { gx: 20, gz: 13, type: 'building', name: 'c', rotation: -Math.PI / 2 },
+        // { gx: 15, gz: 12, type: 'building', name: 'b', rotation: -Math.PI / 2 },
+        // { gx: 16, gz: 12, type: 'building', name: 'c', rotation: -Math.PI / 2 },
+        // { gx: 17, gz: 12, type: 'building', name: 'd', rotation: -Math.PI / 2 },
+        // { gx: 18, gz: 12, type: 'building', name: 'skyscraperB', rotation: -Math.PI / 2 },
+        // { gx: 19, gz: 12, type: 'building', name: 'e', rotation: -Math.PI / 2 },
+        // { gx: 20, gz: 12, type: 'building', name: 'f', rotation: -Math.PI / 2 },
+        // { gx: 15, gz: 13, type: 'building', name: 'g', rotation: -Math.PI / 2 },
+        // { gx: 16, gz: 13, type: 'building', name: 'h', rotation: -Math.PI / 2 },
+        // { gx: 17, gz: 13, type: 'building', name: 'a', rotation: -Math.PI / 2 },
+        // { gx: 18, gz: 13, type: 'building', name: 'b', rotation: -Math.PI / 2 },
+        // { gx: 19, gz: 13, type: 'building', name: 'skyscraperA', rotation: -Math.PI / 2 },
+        // { gx: 20, gz: 13, type: 'building', name: 'c', rotation: -Math.PI / 2 },
 
         { gx: 15, gz: 15, type: 'building', name: 'd', rotation: -Math.PI / 2 },
         { gx: 16, gz: 15, type: 'building', name: 'e', rotation: -Math.PI / 2 },
         { gx: 15, gz: 16, type: 'building', name: 'f', rotation: -Math.PI / 2 },
-        { gx: 16, gz: 16, type: 'building', name: 'skyscraperB', rotation: -Math.PI / 2 },
+        { gx: 16, gz: 16, type: 'building', name: 'h', rotation: -Math.PI / 2 },
 
         { gx: 15, gz: 18, type: 'building', name: 'g', rotation: -Math.PI / 2 },
         { gx: 16, gz: 18, type: 'building', name: 'h', rotation: -Math.PI / 2 }
@@ -297,71 +282,33 @@
     ];
 
     // ==================== Road Definitions ====================
-    // Roads are placed based on the grid
+    // Road type mapping: base code -> { name, baseRotation }
+    // baseRotation is added to the rotation from suffix (1-4)
+    const ROAD_MAP = {
+        'R': { name: 'straight', baseRotation: 0 },
+        'H': { name: 'straight', baseRotation: Math.PI / 2 },
+        '+': { name: 'crossroad', baseRotation: 0 },
+        'T': { name: 'intersection', baseRotation: 0 },
+        'L': { name: 'bend', baseRotation: 0 },
+        'E': { name: 'end', baseRotation: 0 },
+    };
+
     function getRoads() {
         const roads = [];
 
         for (let gz = 0; gz < CITY.DEPTH; gz++) {
             for (let gx = 0; gx < CITY.WIDTH; gx++) {
                 const cell = CITY_GRID[gz][gx];
-                let roadType = null;
-                let rotation = 0;
+                const { base, rotationIndex } = parseCellCode(cell);
 
-                // Simple road types
-                if (cell === 'R') {
-                    roadType = 'straight';
-                    rotation = 0;
-                } else if (cell === 'H') {
-                    roadType = 'straight';
-                    rotation = Math.PI / 2;
-                } else if (cell === '+') {
-                    roadType = 'crossroad';
-                    rotation = 0;
-                }
-                // T-Intersection variants
-                else if (cell === 'T1') {
-                    roadType = 'intersection';
-                    rotation = 0;           // North blocked ┴
-                } else if (cell === 'T2') {
-                    roadType = 'intersection';
-                    rotation = Math.PI;     // South blocked ┬
-                } else if (cell === 'T3') {
-                    roadType = 'intersection';
-                    rotation = Math.PI / 2; // East blocked ├
-                } else if (cell === 'T4') {
-                    roadType = 'intersection';
-                    rotation = -Math.PI / 2; // West blocked ┤
-                }
-                // L-Bend variants
-                else if (cell === 'L1') {
-                    roadType = 'bend';
-                    rotation = 0;           // S+E └
-                } else if (cell === 'L2') {
-                    roadType = 'bend';
-                    rotation = Math.PI / 2; // S+W ┘
-                } else if (cell === 'L3') {
-                    roadType = 'bend';
-                    rotation = Math.PI;     // N+W ┐
-                } else if (cell === 'L4') {
-                    roadType = 'bend';
-                    rotation = -Math.PI / 2; // N+E ┌
-                }
-                // Legacy support for old T and L
-                else if (cell === 'T') {
-                    roadType = 'intersection';
-                    rotation = 0;
-                } else if (cell === 'L') {
-                    roadType = 'bend';
-                    rotation = 0;
-                }
-
-                if (roadType) {
+                const roadConfig = ROAD_MAP[base];
+                if (roadConfig) {
                     roads.push({
                         gx,
                         gz,
                         type: 'road',
-                        name: roadType,
-                        rotation
+                        name: roadConfig.name,
+                        rotation: roadConfig.baseRotation + rotationIndexToRadians(rotationIndex)
                     });
                 }
             }
@@ -471,16 +418,36 @@
     };
 
     // ==================== Pathfinding Grid ====================
+    // Parse cell code: extract base type and rotation (1-4 suffix means 0°, 90°, 180°, 270°)
+    function parseCellCode(cell) {
+        // Match pattern: base code + optional rotation number (1-4)
+        const match = cell.match(/^(.+?)([1-4])?$/);
+        if (!match) return { base: cell, rotationIndex: 1 };
+
+        const base = match[1];
+        const rotationIndex = match[2] ? parseInt(match[2]) : 1;
+        return { base, rotationIndex };
+    }
+
+    // Convert rotation index (1-4) to radians
+    function rotationIndexToRadians(index) {
+        // 1 = 0°, 2 = 90°, 3 = 180°, 4 = 270°
+        return (index - 1) * (Math.PI / 2);
+    }
+
+    // Walkable tile base types (without rotation suffix)
+    const WALKABLE_BASES = ['R', 'H', '+', 'T', 'L', 'E', 'P', 'G', 'M', 'C', 'S', 'PS', 'PL', 'PM'];
+
     function generateWalkableMap() {
         const grid = [];
-        const roadTypes = ['R', 'H', '+', 'T', 'L', 'T1', 'T2', 'T3', 'T4', 'L1', 'L2', 'L3', 'L4', 'P', 'G', 'M', 'C1', 'C2', 'C3', 'C4', 'S1', 'S2', 'S3', 'S4'];
 
         for (let gz = 0; gz < CITY.DEPTH; gz++) {
             const row = [];
             for (let gx = 0; gx < CITY.WIDTH; gx++) {
                 const cell = CITY_GRID[gz][gx];
+                const { base } = parseCellCode(cell);
                 // Roads, parks and gardens are walkable
-                const walkable = roadTypes.includes(cell);
+                const walkable = WALKABLE_BASES.includes(base);
                 row.push(walkable ? 1 : 0);
             }
             grid.push(row);
@@ -493,6 +460,21 @@
         };
     }
 
+    // ==================== Ground Tile Mapping ====================
+    // Maps base cell code to tile configuration
+    const GROUND_TILE_MAP = {
+        'B': { type: 'tile', name: 'low' },
+        '.': { type: 'tile', name: 'low' },
+        'P': { type: 'minigolf', name: 'open', isGround: true },
+        'G': { type: 'minigolf', name: 'open', isGround: true },
+        'M': { type: 'market', name: 'floor', isGround: true },
+        'C': { type: 'minigolf', name: 'corner', isGround: true },
+        'S': { type: 'minigolf', name: 'side', isGround: true },
+        'PS': { type: 'suburban', name: 'pathStonesShort', isGround: true },
+        'PL': { type: 'suburban', name: 'pathStonesLong', isGround: true },
+        'PM': { type: 'suburban', name: 'pathStonesMessy', isGround: true },
+    };
+
     // ==================== Get Ground Tiles ====================
     function getGroundTiles() {
         const tiles = [];
@@ -500,37 +482,18 @@
         for (let gz = 0; gz < CITY.DEPTH; gz++) {
             for (let gx = 0; gx < CITY.WIDTH; gx++) {
                 const cell = CITY_GRID[gz][gx];
-                // Place ground tiles under buildings (concrete)
-                if (cell === 'B' || cell === '.') {
-                    tiles.push({ gx, gz, type: 'tile', name: 'low' });
-                }
-                // Parks and gardens get beautiful minigolf grass tiles
-                else if (cell === 'P' || cell === 'G') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'open', isGround: true });
-                }
-                // Market floor tiles (checkered pattern)
-                else if (cell === 'M') {
-                    tiles.push({ gx, gz, type: 'market', name: 'floor', isGround: true });
-                }
-                // Minigolf corner tiles (C1-C4)
-                else if (cell === 'C1') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: 0, isGround: true });
-                } else if (cell === 'C2') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: Math.PI / 2, isGround: true });
-                } else if (cell === 'C3') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: Math.PI, isGround: true });
-                } else if (cell === 'C4') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'corner', rotation: -Math.PI / 2, isGround: true });
-                }
-                // Minigolf side tiles (S1-S4)
-                else if (cell === 'S1') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: 0, isGround: true });
-                } else if (cell === 'S2') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: Math.PI / 2, isGround: true });
-                } else if (cell === 'S3') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: Math.PI, isGround: true });
-                } else if (cell === 'S4') {
-                    tiles.push({ gx, gz, type: 'minigolf', name: 'side', rotation: -Math.PI / 2, isGround: true });
+                const { base, rotationIndex } = parseCellCode(cell);
+
+                const tileConfig = GROUND_TILE_MAP[base];
+                if (tileConfig) {
+                    tiles.push({
+                        gx,
+                        gz,
+                        type: tileConfig.type,
+                        name: tileConfig.name,
+                        rotation: rotationIndexToRadians(rotationIndex),
+                        isGround: tileConfig.isGround || false
+                    });
                 }
             }
         }
