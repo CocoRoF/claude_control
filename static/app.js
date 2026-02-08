@@ -591,13 +591,39 @@ async function loadSessionLogs() {
             return;
         }
 
-        container.innerHTML = result.entries.map(entry => `
-            <div class="log-entry">
-                <span class="log-timestamp">${formatTimestamp(entry.timestamp)}</span>
-                <span class="log-level ${entry.level}">${entry.level}</span>
-                <span class="log-message">${escapeHtml(entry.message)}</span>
-            </div>
-        `).join('');
+        container.innerHTML = result.entries.map(entry => {
+            // Check if this is a long message that should be collapsible
+            const message = entry.message || '';
+            const metadata = entry.metadata || {};
+            const isLongMessage = metadata.is_truncated || message.length > 200;
+            const preview = metadata.preview || message.substring(0, 200) + (message.length > 200 ? '...' : '');
+
+            if (isLongMessage) {
+                return `
+                    <div class="log-entry expandable" onclick="toggleLogEntry(this)">
+                        <div class="log-header">
+                            <span class="log-timestamp">${formatTimestamp(entry.timestamp)}</span>
+                            <span class="log-level ${entry.level}">${entry.level}</span>
+                            <span class="log-expand-icon">▶</span>
+                        </div>
+                        <div class="log-message-container">
+                            <span class="log-message log-preview">${escapeHtml(preview)}</span>
+                            <span class="log-message log-full hidden">${escapeHtml(message)}</span>
+                        </div>
+                        ${metadata.prompt_length ? `<span class="log-meta">(${metadata.prompt_length} chars)</span>` : ''}
+                        ${metadata.output_length ? `<span class="log-meta">(${metadata.output_length} chars)</span>` : ''}
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="log-entry">
+                        <span class="log-timestamp">${formatTimestamp(entry.timestamp)}</span>
+                        <span class="log-level ${entry.level}">${entry.level}</span>
+                        <span class="log-message">${escapeHtml(message)}</span>
+                    </div>
+                `;
+            }
+        }).join('');
 
         // Scroll to bottom
         container.scrollTop = container.scrollHeight;
@@ -607,6 +633,27 @@ async function loadSessionLogs() {
                 <p>Failed to load logs: ${error.message}</p>
             </div>
         `;
+    }
+}
+
+/**
+ * Toggle log entry expansion
+ */
+function toggleLogEntry(element) {
+    const isExpanded = element.classList.contains('expanded');
+
+    if (isExpanded) {
+        // Collapse
+        element.classList.remove('expanded');
+        element.querySelector('.log-expand-icon').textContent = '▶';
+        element.querySelector('.log-preview').classList.remove('hidden');
+        element.querySelector('.log-full').classList.add('hidden');
+    } else {
+        // Expand
+        element.classList.add('expanded');
+        element.querySelector('.log-expand-icon').textContent = '▼';
+        element.querySelector('.log-preview').classList.add('hidden');
+        element.querySelector('.log-full').classList.remove('hidden');
     }
 }
 

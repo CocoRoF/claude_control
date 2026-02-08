@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 STDIO_BUFFER_LIMIT = 16 * 1024 * 1024
 
 # Claude execution timeout (default 5 minutes)
-CLAUDE_DEFAULT_TIMEOUT = 300.0
+CLAUDE_DEFAULT_TIMEOUT = 1800
 
 # Platform detection
 IS_WINDOWS = platform.system() == 'Windows'
@@ -130,146 +130,171 @@ def get_claude_env_vars() -> Dict[str, str]:
     return env_vars
 
 
-def find_claude_executable() -> Optional[str]:
+class ClaudeNodeConfig:
     """
-    Find the Claude CLI executable path (cross-platform).
+    Configuration for direct Node.js execution of Claude CLI.
 
-    Search order:
-    1. 'claude' in PATH (works on all platforms)
-    2. Windows-specific: 'claude.cmd', 'claude.exe', 'claude.bat' in PATH
-    3. Windows-specific: Common npm global installation paths
+    This bypasses cmd.exe/PowerShell entirely on Windows,
+    avoiding command line length limits and escaping issues.
+    """
+    def __init__(self, node_path: str, cli_js_path: str, base_dir: str):
+        self.node_path = node_path
+        self.cli_js_path = cli_js_path
+        self.base_dir = base_dir
+
+    def __repr__(self):
+        return f"ClaudeNodeConfig(node='{self.node_path}', cli='{self.cli_js_path}')"
+
+
+def find_claude_node_config() -> Optional[ClaudeNodeConfig]:
+    """
+    Find Node.js and Claude CLI JavaScript file paths for direct execution.
+
+    This completely bypasses cmd.exe/PowerShell on Windows by finding:
+    1. node.exe path
+    2. @anthropic-ai/claude-code/cli.js path
 
     Returns:
-        Full path to Claude CLI executable, or None if not found.
+        ClaudeNodeConfig with paths, or None if not found.
     """
+    node_path = None
+    cli_js_path = None
+    base_dir = None
+
     if IS_WINDOWS:
-        # On Windows, prioritize finding .cmd/.bat files explicitly
-        # because shutil.which may return path without extension
+        # Strategy 1: Find claude.cmd and parse it to get paths
+        claude_cmd_paths = []
 
-        # First, check for explicit .cmd (most common for npm global installs)
-        for ext in ['.cmd', '.bat', '.exe']:
-            claude_path = shutil.which(f"claude{ext}")
-            if claude_path:
-                logger.debug(f"Found claude via which('claude{ext}'): {claude_path}")
-                return claude_path
+        # Check common npm global installation paths
+        for ext in ['.cmd', '.ps1', '']:
+            found = shutil.which(f"claude{ext}")
+            if found:
+                claude_cmd_paths.append(Path(found))
 
-        # Check common npm global installation paths on Windows
-        npm_paths = []
-
-        # APPDATA/npm (most common for npm global installs)
+        # Additional common paths
         appdata = os.environ.get('APPDATA')
         if appdata:
-            npm_paths.append(Path(appdata) / 'npm' / 'claude.cmd')
-            npm_paths.append(Path(appdata) / 'npm' / 'claude.exe')
+            claude_cmd_paths.append(Path(appdata) / 'npm' / 'claude.cmd')
+        claude_cmd_paths.append(Path.home() / 'AppData' / 'Roaming' / 'npm' / 'claude.cmd')
 
-        # User home directory fallback
-        npm_paths.append(Path.home() / 'AppData' / 'Roaming' / 'npm' / 'claude.cmd')
-        npm_paths.append(Path.home() / 'AppData' / 'Roaming' / 'npm' / 'claude.exe')
+        # nvm4w common paths
+        nvm_paths = [
+            Path('C:/nvm4w/nodejs'),
+            Path('C:/Program Files/nodejs'),
+            Path.home() / 'AppData' / 'Local' / 'nvm',
+        ]
+        for nvm_path in nvm_paths:
+            if nvm_path.exists():
+                claude_cmd_paths.append(nvm_path / 'claude.cmd')
 
-        for npm_path in npm_paths:
-            if npm_path.exists():
-                logger.debug(f"Found claude at npm path: {npm_path}")
-                return str(npm_path)
+        # Find the first existing claude.cmd and derive paths
+        for cmd_path in claude_cmd_paths:
+            if cmd_path.exists():
+                base_dir = cmd_path.parent
+                potential_node = base_dir / 'node.exe'
+                potential_cli = base_dir / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js'
 
-        # Finally try without extension (shutil.which will search PATHEXT)
-        claude_path = shutil.which("claude")
-        if claude_path:
-            logger.debug(f"Found claude via which('claude'): {claude_path}")
-            return claude_path
+                if potential_cli.exists():
+                    # Found cli.js, now find node
+                    cli_js_path = str(potential_cli)
+
+                    if potential_node.exists():
+                        node_path = str(potential_node)
+                    else:
+                        # Use node from PATH
+                        node_path = shutil.which('node') or shutil.which('node.exe')
+
+                    if node_path and cli_js_path:
+                        logger.info(f"Found Claude via cmd wrapper: node={node_path}, cli={cli_js_path}")
+                        return ClaudeNodeConfig(node_path, cli_js_path, str(base_dir))
+
+        # Strategy 2: Direct search for cli.js in common npm locations
+        npm_module_paths = []
+        if appdata:
+            npm_module_paths.append(Path(appdata) / 'npm' / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js')
+
+        for nvm_path in nvm_paths:
+            npm_module_paths.append(nvm_path / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js')
+
+        for cli_path in npm_module_paths:
+            if cli_path.exists():
+                cli_js_path = str(cli_path)
+                base_dir = str(cli_path.parent.parent.parent.parent)  # up to npm root
+                node_path = shutil.which('node') or shutil.which('node.exe')
+
+                if node_path:
+                    logger.info(f"Found Claude via direct search: node={node_path}, cli={cli_js_path}")
+                    return ClaudeNodeConfig(node_path, cli_js_path, base_dir)
 
     else:
-        # On Unix-like systems, try the basic 'claude' command first
-        claude_path = shutil.which("claude")
+        # Unix-like systems: find claude binary and derive cli.js path
+        claude_path = shutil.which('claude')
+
         if claude_path:
-            logger.debug(f"Found claude via which('claude'): {claude_path}")
-            return claude_path
+            # Read the shebang/script to find cli.js
+            claude_path = Path(claude_path).resolve()
 
-        # Also check common paths on Unix
-        unix_paths = [
-            Path.home() / '.npm-global' / 'bin' / 'claude',
-            Path('/usr/local/bin/claude'),
-            Path('/usr/bin/claude'),
-        ]
-        for unix_path in unix_paths:
-            if unix_path.exists() and unix_path.is_file():
-                logger.debug(f"Found claude at: {unix_path}")
-                return str(unix_path)
+            # Common cli.js locations relative to claude binary
+            possible_cli_paths = [
+                claude_path.parent / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js',
+                claude_path.parent.parent / 'lib' / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js',
+                Path.home() / '.npm-global' / 'lib' / 'node_modules' / '@anthropic-ai' / 'claude-code' / 'cli.js',
+                Path('/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js'),
+                Path('/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js'),
+            ]
 
-    logger.warning("Claude CLI executable not found in any known location")
+            for cli_path in possible_cli_paths:
+                if cli_path.exists():
+                    cli_js_path = str(cli_path)
+                    base_dir = str(cli_path.parent.parent.parent.parent)
+                    node_path = shutil.which('node')
+
+                    if node_path:
+                        logger.info(f"Found Claude on Unix: node={node_path}, cli={cli_js_path}")
+                        return ClaudeNodeConfig(node_path, cli_js_path, base_dir)
+
+        # Fallback: just use 'claude' command directly (for compatibility)
+        if claude_path:
+            node_path = shutil.which('node')
+            if node_path:
+                # Return with claude_path as cli.js - will be handled specially
+                logger.info(f"Falling back to claude binary: {claude_path}")
+                return ClaudeNodeConfig(node_path, str(claude_path), str(claude_path.parent))
+
+    logger.warning("Claude CLI (Node.js configuration) not found")
     return None
 
 
-def _build_shell_command(executable: str, args: List[str]) -> Tuple[str, List[str], bool]:
+# Legacy function for backward compatibility
+def find_claude_executable() -> Optional[str]:
     """
-    Build the appropriate shell command based on platform and executable type.
+    Find the Claude CLI executable path (legacy, for compatibility).
+
+    Use find_claude_node_config() for new code.
+    """
+    config = find_claude_node_config()
+    if config:
+        if IS_WINDOWS:
+            return config.node_path  # Return node.exe on Windows
+        else:
+            return shutil.which('claude')  # Return claude binary on Unix
+    return None
+
+
+def _build_direct_node_command(config: ClaudeNodeConfig, args: List[str]) -> List[str]:
+    """
+    Build command for direct Node.js execution (bypasses cmd.exe/PowerShell entirely).
 
     Args:
-        executable: The executable path or name.
-        args: Additional arguments.
+        config: ClaudeNodeConfig with node and cli.js paths.
+        args: Claude CLI arguments.
 
     Returns:
-        Tuple of (shell_executable, full_args, use_shell)
-        - shell_executable: The actual executable to run
-        - full_args: Complete list of arguments including the executable
-        - use_shell: Whether to use shell=True (generally avoided)
+        List of command arguments starting with node.exe.
     """
-    if IS_WINDOWS:
-        # Normalize path separators for Windows
-        executable = executable.replace('/', '\\')
-        ext = Path(executable).suffix.lower()
-
-        # If no extension, check if a .cmd or .bat version exists
-        # This handles cases where shutil.which returns path without extension
-        if not ext or ext not in ('.cmd', '.bat', '.exe', '.ps1'):
-            # Check if this is actually a .cmd file (common for npm)
-            cmd_path = executable + '.cmd'
-            bat_path = executable + '.bat'
-
-            if Path(cmd_path).exists():
-                logger.debug(f"Detected {executable} is actually {cmd_path}")
-                executable = cmd_path
-                ext = '.cmd'
-            elif Path(bat_path).exists():
-                logger.debug(f"Detected {executable} is actually {bat_path}")
-                executable = bat_path
-                ext = '.bat'
-            else:
-                # Check if the file itself is a script by reading first line
-                try:
-                    if Path(executable).exists():
-                        with open(executable, 'rb') as f:
-                            first_bytes = f.read(256)
-                            # Check for batch file signatures
-                            if first_bytes.startswith(b'@') or b'\r\n@' in first_bytes:
-                                logger.debug(f"Detected {executable} is a batch script by content")
-                                ext = '.cmd'  # Treat as batch file
-                except (IOError, OSError):
-                    pass
-
-        if ext in ('.cmd', '.bat'):
-            # Batch files must be run via cmd.exe /c
-            # This is a Windows requirement, not a choice
-            full_args = ['cmd.exe', '/c', executable] + args
-            logger.debug(f"Using cmd.exe wrapper for batch file: {executable}")
-            return ('cmd.exe', full_args, False)
-        elif ext == '.ps1':
-            # PowerShell scripts
-            full_args = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', executable] + args
-            return ('powershell.exe', full_args, False)
-        elif ext == '.exe':
-            # Native executables
-            full_args = [executable] + args
-            return (executable, full_args, False)
-        else:
-            # Unknown extension on Windows - try via cmd.exe to be safe
-            # This handles edge cases where npm installs scripts without proper extension
-            logger.debug(f"Unknown extension '{ext}' on Windows, using cmd.exe wrapper for: {executable}")
-            full_args = ['cmd.exe', '/c', executable] + args
-            return ('cmd.exe', full_args, False)
-    else:
-        # Unix-like systems: direct execution
-        full_args = [executable] + args
-        return (executable, full_args, False)
+    # Direct execution: node.exe cli.js [args...]
+    # No cmd.exe, no PowerShell, no shell escaping issues
+    return [config.node_path, config.cli_js_path] + args
 
 
 class WindowsProcessWrapper:
@@ -331,15 +356,12 @@ async def create_subprocess_cross_platform(
     """
     Create a subprocess in a cross-platform compatible way.
 
-    This function handles the following platform-specific issues:
-    - Windows: Uses subprocess.Popen wrapped for async (avoids ProactorEventLoop requirement)
-    - Windows: .cmd/.bat files cannot be executed directly by CreateProcess
-    - Windows: Need to properly escape/quote arguments
-    - Windows: Prevent console window popups for background processes
-    - Unix: Standard asyncio subprocess execution
+    IMPORTANT: On Windows, caller must provide direct executable commands
+    (e.g., node.exe with arguments), NOT batch files (.cmd/.bat).
+    This function does NOT wrap commands with cmd.exe or PowerShell.
 
     Args:
-        cmd: Command and arguments as a list. First element is the executable.
+        cmd: Command and arguments as a list. First element must be a direct executable.
         stdin: stdin handling (e.g., asyncio.subprocess.PIPE or None)
         stdout: stdout handling
         stderr: stderr handling
@@ -358,18 +380,12 @@ async def create_subprocess_cross_platform(
     if not cmd:
         raise ValueError("Command list cannot be empty")
 
-    executable = cmd[0]
-    args = cmd[1:]
-
-    # Build platform-appropriate command
-    shell_exec, full_cmd, use_shell = _build_shell_command(executable, args)
-
-    logger.debug(f"Platform: {platform.system()}, Original: {executable}, Final cmd: {full_cmd[:4]}...")
+    logger.debug(f"Platform: {platform.system()}, Command: {cmd[:4]}...")
 
     try:
         if IS_WINDOWS:
-            # Windows: Use subprocess.Popen directly and wrap for async
-            # This avoids the NotImplementedError when ProactorEventLoop is not used
+            # Windows: Use subprocess.Popen directly with node.exe
+            # No cmd.exe wrapper - direct execution only
 
             # Map asyncio.subprocess constants to subprocess constants
             stdin_arg = sp.PIPE if stdin == asyncio.subprocess.PIPE else stdin
@@ -386,7 +402,7 @@ async def create_subprocess_cross_platform(
 
             # Create process synchronously (Popen doesn't block)
             popen = sp.Popen(
-                full_cmd,
+                cmd,
                 stdin=stdin_arg,
                 stdout=stdout_arg,
                 stderr=stderr_arg,
@@ -402,7 +418,7 @@ async def create_subprocess_cross_platform(
         else:
             # Unix-like systems: use asyncio subprocess directly
             process = await asyncio.create_subprocess_exec(
-                *full_cmd,
+                *cmd,
                 stdin=stdin,
                 stdout=stdout,
                 stderr=stderr,
@@ -414,19 +430,16 @@ async def create_subprocess_cross_platform(
             return process
 
     except FileNotFoundError as e:
-        logger.error(f"Executable not found: {shell_exec} (full cmd: {full_cmd[:2]})")
+        logger.error(f"Executable not found: {cmd[0]}")
         raise
     except PermissionError as e:
-        logger.error(f"Permission denied executing: {shell_exec}")
+        logger.error(f"Permission denied executing: {cmd[0]}")
         raise
     except OSError as e:
-        # WinError 193 = "%1 is not a valid Win32 application"
-        # This happens when trying to run a batch file directly
         if IS_WINDOWS and hasattr(e, 'winerror') and e.winerror == 193:
             logger.error(
-                f"OSError 193: Cannot execute {executable} directly. "
-                f"This is typically a batch script that needs cmd.exe wrapper. "
-                f"Full command was: {full_cmd}"
+                f"OSError 193: Cannot execute {cmd[0]} directly. "
+                f"Ensure you are passing a direct executable (e.g., node.exe), not a script."
             )
         raise
 
@@ -476,8 +489,8 @@ class ClaudeProcess:
         self._execution_count = 0
         self._conversation_id: Optional[str] = None
 
-        # Claude CLI path (set during initialize)
-        self._claude_path: Optional[str] = None
+        # Claude Node.js configuration (set during initialize)
+        self._node_config: Optional[ClaudeNodeConfig] = None
 
         # Current running process (for execute commands)
         self._current_process: Optional[asyncio.subprocess.Process] = None
@@ -521,19 +534,19 @@ class ClaudeProcess:
             if self.mcp_config and self.mcp_config.servers:
                 await self._create_mcp_config()
 
-            # Find Claude CLI executable (cross-platform)
-            claude_path = find_claude_executable()
-            if claude_path is None:
+            # Find Claude Node.js configuration (direct node.exe + cli.js execution)
+            node_config = find_claude_node_config()
+            if node_config is None:
                 raise FileNotFoundError(
                     "Claude Code CLI not found. "
                     "Install it with: 'npm install -g @anthropic-ai/claude-code'"
                 )
 
-            # Store Claude CLI path for use in execute()
-            self._claude_path = claude_path
+            # Store Node.js config for use in execute()
+            self._node_config = node_config
 
-            # Log the found path with platform info
-            logger.info(f"[{self.session_id}] Found claude CLI at: {claude_path}")
+            # Log the found paths with platform info
+            logger.info(f"[{self.session_id}] Claude CLI config: {node_config}")
             logger.info(f"[{self.session_id}] Platform: {platform.system()} ({platform.machine()})")
 
             self.status = SessionStatus.RUNNING
@@ -578,7 +591,11 @@ class ClaudeProcess:
         resume: Optional[bool] = None
     ) -> Dict:
         """
-        Execute a prompt with Claude.
+        Execute a prompt with Claude using direct Node.js execution.
+
+        On Windows, this bypasses cmd.exe/PowerShell entirely by:
+        1. Calling node.exe directly with cli.js
+        2. Sending prompts via stdin (no command line length limits)
 
         Args:
             prompt: The prompt to send to Claude.
@@ -606,67 +623,65 @@ class ClaudeProcess:
                 env.update(get_claude_env_vars())  # Auto-add Claude Code environment variables
                 env.update(self.env_vars)  # Session-specific user environment variables
 
-                # Build claude command (use stored full path for cross-platform compatibility)
-                claude_cmd = self._claude_path or find_claude_executable() or "claude"
-                cmd = [claude_cmd, "--print", "--verbose"]
+                # Get or find Node.js config
+                node_config = self._node_config or find_claude_node_config()
+                if not node_config:
+                    return {
+                        "success": False,
+                        "error": "Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
+                    }
+
+                # Build base arguments (without node.exe and cli.js - those are added by _build_direct_node_command)
+                args = ["--print", "--verbose"]
 
                 # Resume previous conversation if we have a Claude CLI session ID
                 should_resume = resume if resume is not None else (self._execution_count > 0 and self._conversation_id)
                 if should_resume and self._conversation_id:
-                    cmd.extend(["--resume", self._conversation_id])
+                    args.extend(["--resume", self._conversation_id])
                     logger.info(f"[{self.session_id}] 🔄 Resuming conversation: {self._conversation_id}")
 
                 # Skip permission prompts option (required for autonomous mode)
-                # 1. Function argument takes priority
-                # 2. Check CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS environment variable
                 should_skip_permissions = skip_permissions
                 if should_skip_permissions is None:
                     env_skip = os.environ.get('CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS', 'true').lower()
                     should_skip_permissions = env_skip in ('true', '1', 'yes', 'on')
 
                 if should_skip_permissions:
-                    cmd.append("--dangerously-skip-permissions")
+                    args.append("--dangerously-skip-permissions")
                     logger.info(f"[{self.session_id}] 🤖 Autonomous mode: --dangerously-skip-permissions enabled")
 
                 # Specify model (session model > env default)
                 effective_model = self.model or os.environ.get('ANTHROPIC_MODEL')
                 if effective_model:
-                    cmd.extend(["--model", effective_model])
+                    args.extend(["--model", effective_model])
                     logger.info(f"[{self.session_id}] 🤖 Using model: {effective_model}")
 
                 # Specify max turns (execution setting > session setting)
                 effective_max_turns = max_turns or self.max_turns
                 if effective_max_turns:
-                    cmd.extend(["--max-turns", str(effective_max_turns)])
+                    args.extend(["--max-turns", str(effective_max_turns)])
 
                 # Add system prompt (execution param > session default)
                 effective_system_prompt = system_prompt or self.system_prompt
 
-                # Calculate total command line length to decide stdin usage
-                # Windows has stricter command line limits (~8191 chars)
-                max_cmd_length = 2000 if IS_WINDOWS else 8000
-                total_length = len(prompt) + (len(effective_system_prompt) if effective_system_prompt else 0)
-                use_stdin = total_length > max_cmd_length
+                # On Windows with direct node.exe execution, we can safely use stdin
+                # No command line length limits or escaping issues
 
                 if effective_system_prompt:
-                    if use_stdin:
-                        # System prompt too long for command line - will be sent with prompt via stdin
-                        logger.info(f"[{self.session_id}] 📝 System prompt ({len(effective_system_prompt)} chars) - using stdin")
-                    else:
-                        cmd.extend(["--append-system-prompt", effective_system_prompt])
-                        logger.info(f"[{self.session_id}] 📝 System prompt applied ({len(effective_system_prompt)} chars)")
+                    args.extend(["--append-system-prompt", effective_system_prompt])
+                    logger.info(f"[{self.session_id}] 📝 System prompt applied ({len(effective_system_prompt)} chars)")
 
-                # Add the prompt
-                if not use_stdin:
-                    cmd.extend(["-p", prompt])
+                # Build final command: node.exe cli.js [args...]
+                # Note: prompt will be sent via stdin, not command line
+                cmd = _build_direct_node_command(node_config, args)
 
-                logger.info(f"[{self.session_id}] Executing: {' '.join(cmd[:5])}...")  # Log partial for security
-                logger.info(f"[{self.session_id}] Prompt length: {len(prompt)} chars, use_stdin: {use_stdin}")
+                logger.info(f"[{self.session_id}] Executing: node cli.js {' '.join(args[:5])}...")
+                logger.info(f"[{self.session_id}] Prompt length: {len(prompt)} chars, using stdin")
 
-                # Execute process using cross-platform helper
+                # Execute process using cross-platform helper (direct node.exe execution)
                 self._current_process = await create_subprocess_cross_platform(
                     cmd,
-                    stdin=asyncio.subprocess.PIPE if use_stdin else None,
+                    stdin=asyncio.subprocess.PIPE,  # Use stdin for prompt
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
@@ -674,24 +689,12 @@ class ClaudeProcess:
                     limit=STDIO_BUFFER_LIMIT
                 )
 
-                # Collect output
+                # Collect output - send prompt via stdin
                 try:
-                    if use_stdin:
-                        # Combine system prompt and user prompt for stdin
-                        stdin_content = prompt
-                        if effective_system_prompt:
-                            # Prepend system prompt instructions to the prompt
-                            stdin_content = f"[SYSTEM INSTRUCTIONS]\n{effective_system_prompt}\n[END SYSTEM INSTRUCTIONS]\n\n{prompt}"
-
-                        stdout, stderr = await asyncio.wait_for(
-                            self._current_process.communicate(input=stdin_content.encode('utf-8')),
-                            timeout=timeout
-                        )
-                    else:
-                        stdout, stderr = await asyncio.wait_for(
-                            self._current_process.communicate(),
-                            timeout=timeout
-                        )
+                    stdout, stderr = await asyncio.wait_for(
+                        self._current_process.communicate(input=prompt.encode('utf-8')),
+                        timeout=timeout
+                    )
                 except asyncio.TimeoutError:
                     logger.error(f"[{self.session_id}] Execution timed out after {timeout}s")
                     await self._kill_current_process()

@@ -692,6 +692,73 @@ body {
     color: var(--text-primary);
 }
 
+/* Expandable log entries */
+.log-entry.expandable {
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.log-entry.expandable:hover {
+    background-color: var(--bg-hover);
+}
+
+.log-entry .log-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.log-entry .log-expand-icon {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    transition: transform var(--transition-fast);
+}
+
+.log-entry.expanded .log-expand-icon {
+    color: var(--primary-color);
+}
+
+.log-entry .log-message-container {
+    margin-left: 24px;
+    margin-top: 8px;
+}
+
+.log-entry .log-preview {
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    max-width: 100%;
+}
+
+.log-entry .log-full {
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: block;
+    background-color: var(--bg-secondary);
+    padding: 12px;
+    border-radius: var(--border-radius);
+    margin-top: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.log-entry .log-meta {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-left: 24px;
+    margin-top: 4px;
+    display: block;
+}
+
+.log-entry.expanded {
+    background-color: var(--bg-tertiary);
+    padding: 16px;
+}
+
 /* Batch Panel */
 .batch-panel {
     display: flex;

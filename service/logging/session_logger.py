@@ -184,16 +184,25 @@ class SessionLogger:
             system_prompt: Custom system prompt
             max_turns: Maximum turns for execution
         """
+        # Store full message for log file, but add preview info for frontend
+        is_truncated = len(prompt) > 200
+        preview = prompt[:200] + "..." if is_truncated else prompt
+
         metadata = {
             "type": "command",
             "timeout": timeout,
-            "system_prompt": system_prompt[:100] + "..." if system_prompt and len(system_prompt) > 100 else system_prompt,
-            "max_turns": max_turns
+            "system_prompt_preview": system_prompt[:100] + "..." if system_prompt and len(system_prompt) > 100 else system_prompt,
+            "system_prompt_length": len(system_prompt) if system_prompt else None,
+            "max_turns": max_turns,
+            "prompt_length": len(prompt),
+            "is_truncated": is_truncated,
+            "preview": preview
         }
         # Remove None values
         metadata = {k: v for k, v in metadata.items() if v is not None}
 
-        self.log(LogLevel.COMMAND, f"PROMPT: {prompt[:500]}{'...' if len(prompt) > 500 else ''}", metadata)
+        # Full message in log file
+        self.log(LogLevel.COMMAND, f"PROMPT: {prompt}", metadata)
 
     def log_response(
         self,
@@ -213,17 +222,26 @@ class SessionLogger:
             duration_ms: Execution duration in milliseconds
             cost_usd: API cost in USD
         """
+        # Store full message for log file
+        output_length = len(output) if output else 0
+        is_truncated = output_length > 200
+        preview = output[:200] + "..." if output and is_truncated else output
+
         metadata = {
             "type": "response",
             "success": success,
             "duration_ms": duration_ms,
-            "cost_usd": cost_usd
+            "cost_usd": cost_usd,
+            "output_length": output_length,
+            "is_truncated": is_truncated,
+            "preview": preview if success else None
         }
         # Remove None values
         metadata = {k: v for k, v in metadata.items() if v is not None}
 
         if success:
-            message = f"SUCCESS: {output[:500]}{'...' if output and len(output) > 500 else ''}"
+            # Full message in log file
+            message = f"SUCCESS: {output}"
         else:
             message = f"FAILED: {error}"
 
@@ -391,7 +409,7 @@ def remove_session_logger(session_id: str, delete_file: bool = False):
         if session_id in _session_loggers:
             session_logger = _session_loggers[session_id]
             session_logger.close()
-            
+
             # Optionally delete the file (default: keep it)
             if delete_file:
                 try:
@@ -401,7 +419,7 @@ def remove_session_logger(session_id: str, delete_file: bool = False):
                         logger.info(f"Deleted log file: {log_path}")
                 except Exception as e:
                     logger.warning(f"Failed to delete log file: {e}")
-            
+
             del _session_loggers[session_id]
 
 
