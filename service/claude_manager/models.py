@@ -203,7 +203,7 @@ class ExecuteRequest(BaseModel):
         description="Prompt to send to Claude"
     )
     timeout: Optional[float] = Field(
-        default=1800.0,
+        default=600.0,
         description="Execution timeout (seconds) - recommend longer timeout for autonomous mode"
     )
     skip_permissions: Optional[bool] = Field(

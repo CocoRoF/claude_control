@@ -389,7 +389,7 @@ async function executeCommand(isContinuation = false) {
         }
     }
 
-    const timeout = parseInt(document.getElementById('command-timeout').value) || 1800;
+    const timeout = parseInt(document.getElementById('command-timeout').value) || 600;
     const maxTurns = parseInt(document.getElementById('command-max-turns').value) || null;
     const skipPermissions = document.getElementById('skip-permissions').checked;
     const autoContinue = document.getElementById('auto-continue').checked;
@@ -658,7 +658,7 @@ async function executeBatchCommand() {
         return;
     }
 
-    const timeout = parseInt(document.getElementById('batch-timeout').value) || 1800;
+    const timeout = parseInt(document.getElementById('batch-timeout').value) || 600;
     const parallel = document.getElementById('batch-parallel').checked;
 
     const resultsContainer = document.getElementById('batch-results');

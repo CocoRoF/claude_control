@@ -48,7 +48,7 @@ class SetRoleRequest(BaseModel):
 class SendRequestPayload(BaseModel):
     """Payload for sending an inter-session request."""
     prompt: str = Field(..., description="Prompt to execute")
-    timeout: float = Field(default=1800.0, description="Execution timeout")
+    timeout: float = Field(default=600.0, description="Execution timeout")
     system_prompt: Optional[str] = Field(default=None)
     max_turns: Optional[int] = Field(default=None)
     task_id: Optional[str] = Field(default=None)
@@ -68,7 +68,7 @@ class CreateTaskPlanRequest(BaseModel):
 class StartSelfRequestLoopRequest(BaseModel):
     """Request to start a self-request loop."""
     initial_prompt: str = Field(..., description="Initial prompt")
-    timeout: float = Field(default=1800.0, description="Timeout per request")
+    timeout: float = Field(default=300.0, description="Timeout per request")
     system_prompt: Optional[str] = Field(default=None)
     task_id: Optional[str] = Field(default=None)
 
