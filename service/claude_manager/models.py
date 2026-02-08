@@ -4,7 +4,7 @@ Data models for Claude Control
 Data model definitions for Claude Code session management.
 """
 from enum import Enum
-from typing import Optional, Dict, Any, List, Union, Literal
+from typing import Optional, Dict, Any, List, Union, Literal, TYPE_CHECKING
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -268,3 +268,112 @@ class StorageFileContent(BaseModel):
     content: str
     size: int
     encoding: str = "utf-8"
+
+
+# =============================================================================
+# Extended Execution Models (for timeout-resilient operations)
+# =============================================================================
+
+class ContinuousExecuteRequest(BaseModel):
+    """
+    Request for continuous execution with auto-continue support.
+
+    This enables long-running tasks by automatically continuing
+    when [CONTINUE:] signals are detected in the output.
+    """
+    prompt: str = Field(
+        ...,
+        description="Initial prompt to execute"
+    )
+    timeout_per_chunk: float = Field(
+        default=300.0,
+        description="Timeout for each individual execution chunk (seconds)"
+    )
+    max_total_timeout: float = Field(
+        default=3600.0,
+        description="Maximum total time across all chunks (seconds)"
+    )
+    skip_permissions: bool = Field(
+        default=True,
+        description="Skip permission prompts"
+    )
+    system_prompt: Optional[str] = Field(
+        default=None,
+        description="System prompt for the session"
+    )
+    max_turns: Optional[int] = Field(
+        default=None,
+        description="Max turns per chunk"
+    )
+    auto_continue: bool = Field(
+        default=True,
+        description="Automatically continue on [CONTINUE:] signal"
+    )
+    max_continues: int = Field(
+        default=100,
+        description="Maximum number of continuation requests"
+    )
+    continue_delay_ms: int = Field(
+        default=100,
+        description="Delay between continuation requests (milliseconds)"
+    )
+
+
+class ContinuousExecuteResponse(BaseModel):
+    """Response from continuous execution."""
+    success: bool
+    session_id: str
+    final_output: str = Field(
+        ...,
+        description="Combined output from all execution chunks"
+    )
+    chunks: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Individual chunk outputs with metadata"
+    )
+    total_continues: int = Field(
+        default=0,
+        description="Total number of continuation requests"
+    )
+    total_duration_ms: int = Field(
+        default=0,
+        description="Total execution time across all chunks"
+    )
+    task_completed: bool = Field(
+        default=False,
+        description="Whether [TASK_COMPLETE] was detected"
+    )
+    milestones_completed: List[str] = Field(
+        default_factory=list,
+        description="List of completed milestone IDs"
+    )
+    error: Optional[str] = None
+
+
+class SessionOrchestrationInfo(BaseModel):
+    """Orchestration information for a session."""
+    session_id: str
+    role: str = Field(
+        default="standalone",
+        description="Session role: manager, worker, or standalone"
+    )
+    manager_session_id: Optional[str] = Field(
+        default=None,
+        description="ID of manager session (if this is a worker)"
+    )
+    worker_session_ids: List[str] = Field(
+        default_factory=list,
+        description="IDs of worker sessions (if this is a manager)"
+    )
+    active_task_id: Optional[str] = Field(
+        default=None,
+        description="Currently active task ID"
+    )
+    is_busy: bool = Field(
+        default=False,
+        description="Whether the session is currently executing"
+    )
+    pending_requests: int = Field(
+        default=0,
+        description="Number of pending inter-session requests"
+    )
