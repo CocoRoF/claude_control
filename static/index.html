@@ -287,6 +287,18 @@
                         <input type="text" id="new-session-name" placeholder="my-session">
                     </div>
                     <div class="form-group">
+                        <label for="new-session-prompt">System Prompt</label>
+                        <select id="new-session-prompt" onchange="onPromptSelect()">
+                            <option value="">None (Default)</option>
+                            <!-- Prompts will be loaded dynamically -->
+                            <option value="custom">Custom...</option>
+                        </select>
+                    </div>
+                    <div class="form-group hidden" id="custom-prompt-group">
+                        <label for="new-session-custom-prompt">Custom Prompt</label>
+                        <textarea id="new-session-custom-prompt" rows="6" placeholder="Enter your custom system prompt here..."></textarea>
+                    </div>
+                    <div class="form-group">
                         <label for="new-session-model">Model</label>
                         <select id="new-session-model">
                             <option value="">Default</option>

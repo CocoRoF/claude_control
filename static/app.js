@@ -10,7 +10,10 @@ const state = {
     healthStatus: 'connecting',
     sidebarCollapsed: false,
     // Session-specific data cache
-    sessionData: {} // { sessionId: { input: '', output: '', status: '', statusText: '' } }
+    sessionData: {}, // { sessionId: { input: '', output: '', status: '', statusText: '' } }
+    // Available prompt templates
+    prompts: [], // [{ name, filename, description }]
+    promptContents: {} // { promptName: content }
 };
 
 // Get or initialize session data
@@ -105,6 +108,88 @@ async function loadSessions() {
     } catch (error) {
         showError('Failed to load sessions: ' + error.message);
     }
+}
+
+// ========== Prompts Management ==========
+
+async function loadPrompts() {
+    try {
+        const response = await apiCall('/api/command/prompts');
+        state.prompts = response.prompts || [];
+        updatePromptDropdown();
+    } catch (error) {
+        console.error('Failed to load prompts:', error);
+        // Non-critical, don't show error to user
+    }
+}
+
+function updatePromptDropdown() {
+    const select = document.getElementById('new-session-prompt');
+    if (!select) return;
+
+    // Clear existing options except first (None) and last (Custom)
+    while (select.options.length > 2) {
+        select.remove(1);
+    }
+
+    // Insert prompt options before "Custom..."
+    const customOption = select.options[select.options.length - 1];
+    state.prompts.forEach(prompt => {
+        const option = document.createElement('option');
+        option.value = prompt.name;
+        option.textContent = prompt.description || prompt.name;
+        select.insertBefore(option, customOption);
+    });
+}
+
+async function onPromptSelect() {
+    const select = document.getElementById('new-session-prompt');
+    const customGroup = document.getElementById('custom-prompt-group');
+    const customTextarea = document.getElementById('new-session-custom-prompt');
+
+    if (select.value === 'custom') {
+        customGroup.classList.remove('hidden');
+        customTextarea.focus();
+    } else {
+        customGroup.classList.add('hidden');
+
+        // Load prompt content if selecting a template
+        if (select.value && select.value !== '') {
+            await loadPromptContent(select.value);
+        }
+    }
+}
+
+async function loadPromptContent(promptName) {
+    if (state.promptContents[promptName]) {
+        return state.promptContents[promptName];
+    }
+
+    try {
+        const response = await apiCall(`/api/command/prompts/${promptName}`);
+        state.promptContents[promptName] = response.content;
+        return response.content;
+    } catch (error) {
+        console.error(`Failed to load prompt ${promptName}:`, error);
+        return null;
+    }
+}
+
+async function getSelectedPromptContent() {
+    const select = document.getElementById('new-session-prompt');
+    const customTextarea = document.getElementById('new-session-custom-prompt');
+
+    if (!select.value || select.value === '') {
+        return null;
+    }
+
+    if (select.value === 'custom') {
+        const content = customTextarea.value.trim();
+        return content || null;
+    }
+
+    // Load template content
+    return await loadPromptContent(select.value);
 }
 
 function renderSessionList() {
@@ -206,11 +291,15 @@ async function createSession() {
     const autonomous = document.getElementById('new-session-autonomous').checked;
 
     try {
+        // Get system prompt content
+        const systemPrompt = await getSelectedPromptContent();
+
         const payload = {
             session_name: name || undefined,
             model: model || undefined,
             max_turns: maxTurns,
-            autonomous: autonomous
+            autonomous: autonomous,
+            system_prompt: systemPrompt || undefined
         };
 
         await apiCall('/api/sessions', {
@@ -705,6 +794,9 @@ function playgroundResetView() {
 function showCreateSessionModal() {
     document.getElementById('create-session-modal').classList.remove('hidden');
     document.getElementById('new-session-name').value = '';
+    document.getElementById('new-session-prompt').value = '';
+    document.getElementById('new-session-custom-prompt').value = '';
+    document.getElementById('custom-prompt-group').classList.add('hidden');
     document.getElementById('new-session-model').value = '';
     document.getElementById('new-session-max-turns').value = '50';
     document.getElementById('new-session-autonomous').checked = true;
@@ -750,6 +842,7 @@ function showSuccess(message) {
 
 async function refreshAll() {
     await loadSessions();
+    await loadPrompts();
     await checkHealth();
 }
 

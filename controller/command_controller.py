@@ -6,6 +6,7 @@ and session monitoring endpoints.
 """
 import asyncio
 import logging
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -375,13 +376,13 @@ async def get_session_logs(
 
     # First check if log file exists
     log_file_path = get_log_file_path(session_id)
-    
+
     if not log_file_path:
         raise HTTPException(status_code=404, detail=f"No logs found for session: {session_id}")
 
     # Try to get from active session logger first (faster, uses cache)
     session_logger = get_session_logger(session_id, create_if_missing=False)
-    
+
     if session_logger:
         entries = session_logger.get_logs(limit=limit, level=level_filter)
     else:
@@ -418,3 +419,96 @@ async def get_command_stats():
     }
 
     return stats
+
+
+# ========== Prompts Management Endpoints ==========
+
+class PromptInfo(BaseModel):
+    """Information about an available prompt template."""
+    name: str = Field(..., description="Prompt name (filename without extension)")
+    filename: str = Field(..., description="Prompt filename")
+    description: Optional[str] = Field(None, description="First line of the prompt (as description)")
+
+
+class PromptListResponse(BaseModel):
+    """Response containing list of available prompts."""
+    prompts: List[PromptInfo]
+    total: int
+
+
+class PromptContentResponse(BaseModel):
+    """Response containing full prompt content."""
+    name: str
+    filename: str
+    content: str
+
+
+def get_prompts_dir() -> Path:
+    """Get the prompts directory path."""
+    return Path(__file__).parent.parent / "prompts"
+
+
+@router.get("/prompts", response_model=PromptListResponse)
+async def list_prompts():
+    """
+    List all available prompt templates.
+
+    Reads .md files from the prompts directory.
+    """
+    prompts_dir = get_prompts_dir()
+    prompts = []
+
+    if prompts_dir.exists():
+        for file_path in sorted(prompts_dir.glob("*.md")):
+            if file_path.name.lower() == "readme.md":
+                continue
+
+            name = file_path.stem
+            description = None
+
+            # Read first non-empty line as description
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            description = line[:100]  # Limit description length
+                            break
+                        elif line.startswith("# "):
+                            description = line[2:].strip()
+                            break
+            except Exception as e:
+                logger.warning(f"Failed to read prompt file {file_path}: {e}")
+
+            prompts.append(PromptInfo(
+                name=name,
+                filename=file_path.name,
+                description=description
+            ))
+
+    return PromptListResponse(prompts=prompts, total=len(prompts))
+
+
+@router.get("/prompts/{prompt_name}", response_model=PromptContentResponse)
+async def get_prompt(prompt_name: str):
+    """
+    Get the full content of a specific prompt template.
+    """
+    prompts_dir = get_prompts_dir()
+    file_path = prompts_dir / f"{prompt_name}.md"
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Prompt not found: {prompt_name}")
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        return PromptContentResponse(
+            name=prompt_name,
+            filename=file_path.name,
+            content=content
+        )
+    except Exception as e:
+        logger.error(f"Failed to read prompt {prompt_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read prompt: {e}")
