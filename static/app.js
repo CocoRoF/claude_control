@@ -145,6 +145,12 @@ function updatePromptDropdown() {
         option.textContent = prompt.description || prompt.name;
         select.insertBefore(option, customOption);
     });
+
+    // Set self-manager as default if available
+    const selfManagerOption = Array.from(select.options).find(opt => opt.value === 'self-manager');
+    if (selfManagerOption) {
+        select.value = 'self-manager';
+    }
 }
 
 async function onPromptSelect() {
@@ -894,7 +900,7 @@ function playgroundResetView() {
 function showCreateSessionModal() {
     document.getElementById('create-session-modal').classList.remove('hidden');
     document.getElementById('new-session-name').value = '';
-    document.getElementById('new-session-prompt').value = '';
+    document.getElementById('new-session-prompt').value = 'self-manager';
     document.getElementById('new-session-custom-prompt').value = '';
     document.getElementById('custom-prompt-group').classList.add('hidden');
     document.getElementById('new-session-model').value = '';
