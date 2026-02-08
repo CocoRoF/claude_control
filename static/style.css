@@ -692,187 +692,6 @@ body {
     color: var(--text-primary);
 }
 
-/* Storage Panel */
-.storage-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 24px;
-    gap: 16px;
-}
-
-.storage-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.storage-header-left {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.storage-header h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    margin: 0;
-}
-
-.storage-path {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    font-family: 'SF Mono', Monaco, Consolas, monospace;
-}
-
-.storage-controls {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.storage-controls .btn svg {
-    transform: rotate(180deg);
-}
-
-.storage-breadcrumb {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 10px 14px;
-    background-color: var(--bg-secondary);
-    border-radius: var(--border-radius);
-    font-size: 0.8125rem;
-}
-
-.breadcrumb-item {
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: color var(--transition-fast);
-    padding: 2px 6px;
-    border-radius: 4px;
-}
-
-.breadcrumb-item:hover {
-    color: var(--text-primary);
-    background-color: var(--bg-tertiary);
-}
-
-.breadcrumb-item.active {
-    color: var(--text-primary);
-    font-weight: 500;
-    cursor: default;
-}
-
-.breadcrumb-item.active:hover {
-    background-color: transparent;
-}
-
-.breadcrumb-separator {
-    color: var(--text-muted);
-    margin: 0 2px;
-}
-
-.storage-content {
-    flex: 1;
-    overflow: auto;
-    background-color: var(--bg-secondary);
-    border-radius: var(--border-radius);
-    min-height: 200px;
-}
-
-.storage-file-list {
-    padding: 8px;
-}
-
-.storage-file-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    border-radius: var(--border-radius);
-    cursor: pointer;
-    transition: background-color var(--transition-fast);
-    margin-bottom: 2px;
-}
-
-.storage-file-item:hover {
-    background-color: var(--bg-tertiary);
-}
-
-.storage-file-item.is-directory {
-    font-weight: 500;
-}
-
-.file-icon {
-    font-size: 1.25rem;
-    flex-shrink: 0;
-    width: 24px;
-    text-align: center;
-}
-
-.file-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.file-name {
-    font-size: 0.875rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.file-meta {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-}
-
-/* Storage Preview */
-.storage-preview {
-    margin-top: 16px;
-    background-color: var(--bg-secondary);
-    border-radius: var(--border-radius);
-    border: 1px solid var(--border-color);
-    overflow: hidden;
-}
-
-.preview-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--bg-tertiary);
-}
-
-.preview-header h4 {
-    font-size: 0.875rem;
-    font-weight: 500;
-    margin: 0;
-    font-family: 'SF Mono', Monaco, Consolas, monospace;
-}
-
-.preview-content {
-    padding: 16px;
-    font-family: 'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
-    font-size: 0.8125rem;
-    line-height: 1.6;
-    overflow: auto;
-    max-height: 300px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: var(--text-secondary);
-    margin: 0;
-    background-color: var(--bg-secondary);
-}
-
 /* Batch Panel */
 .batch-panel {
     display: flex;
@@ -1446,33 +1265,8 @@ input[type="number"].styled-number {
 
     .command-panel,
     .logs-panel,
-    .batch-panel,
-    .storage-panel {
+    .batch-panel {
         padding: 16px;
-    }
-
-    .storage-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .storage-controls {
-        width: 100%;
-        justify-content: flex-end;
-    }
-
-    .storage-breadcrumb {
-        padding: 8px 12px;
-        font-size: 0.75rem;
-    }
-
-    .storage-file-item {
-        padding: 10px 12px;
-    }
-
-    .preview-content {
-        max-height: 200px;
-        padding: 12px;
     }
 
     .tab-navigation {
@@ -1619,56 +1413,9 @@ input[type="number"].styled-number {
 
     .command-panel,
     .logs-panel,
-    .batch-panel,
-    .storage-panel {
+    .batch-panel {
         padding: 12px;
         gap: 12px;
-    }
-
-    .storage-header h3 {
-        font-size: 0.875rem;
-    }
-
-    .storage-path {
-        font-size: 0.6875rem;
-    }
-
-    .storage-breadcrumb {
-        padding: 6px 10px;
-        font-size: 0.6875rem;
-        gap: 2px;
-    }
-
-    .storage-file-item {
-        padding: 8px 10px;
-        gap: 10px;
-    }
-
-    .file-icon {
-        font-size: 1rem;
-        width: 20px;
-    }
-
-    .file-name {
-        font-size: 0.8125rem;
-    }
-
-    .file-meta {
-        font-size: 0.6875rem;
-    }
-
-    .preview-header {
-        padding: 10px 12px;
-    }
-
-    .preview-header h4 {
-        font-size: 0.8125rem;
-    }
-
-    .preview-content {
-        padding: 10px;
-        font-size: 0.75rem;
-        max-height: 150px;
     }
 
     .selected-session-info {
@@ -1890,15 +1637,6 @@ input[type="number"].styled-number {
 
     .batch-session-item {
         padding: 12px 14px;
-    }
-
-    .storage-file-item {
-        padding: 14px 16px;
-        min-height: 56px;
-    }
-
-    .breadcrumb-item {
-        padding: 6px 10px;
     }
 
     /* Larger touch targets for form controls */

@@ -110,7 +110,6 @@
                 <div class="tab-navigation">
                     <button class="tab-btn" data-tab="playground" onclick="switchTab('playground')">Playground</button>
                     <button class="tab-btn active" data-tab="command" onclick="switchTab('command')">Command</button>
-                    <button class="tab-btn" data-tab="storage" onclick="switchTab('storage')">Storage</button>
                     <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">Logs</button>
                     <button class="tab-btn" data-tab="storage" onclick="switchTab('storage')">Storage</button>
                     <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">Batch</button>
@@ -202,46 +201,6 @@
                                     <span class="execution-status" id="execution-status"></span>
                                 </div>
                                 <pre class="output-content" id="command-output">No output yet</pre>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Storage Tab -->
-                    <div class="tab-pane" id="storage-tab">
-                        <div class="no-session-selected" id="no-session-storage-message">
-                            <div class="empty-state">
-                                <h3>Select a Session</h3>
-                                <p>Choose a session from the list to browse storage files</p>
-                            </div>
-                        </div>
-                        <div class="storage-panel hidden" id="storage-panel">
-                            <div class="storage-header">
-                                <div class="storage-header-left">
-                                    <h3 id="storage-session-title">Session Storage</h3>
-                                    <span class="storage-path" id="storage-path"></span>
-                                </div>
-                                <div class="storage-controls">
-                                    <button class="btn btn-sm" onclick="navigateStorageUp()" id="storage-up-btn" disabled>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M9 18l6-6-6-6"/>
-                                        </svg>
-                                        Up
-                                    </button>
-                                    <button class="btn btn-sm" onclick="loadStorageFiles()">Refresh</button>
-                                </div>
-                            </div>
-                            <nav class="storage-breadcrumb" id="storage-breadcrumb">
-                                <span class="breadcrumb-item active" data-path="">root</span>
-                            </nav>
-                            <div class="storage-content" id="storage-content">
-                                <div class="loading">Loading files...</div>
-                            </div>
-                            <div class="storage-preview hidden" id="storage-preview">
-                                <div class="preview-header">
-                                    <h4 id="preview-filename">filename.txt</h4>
-                                    <button class="btn btn-sm btn-secondary" onclick="closeStoragePreview()">Close</button>
-                                </div>
-                                <pre class="preview-content" id="preview-content"></pre>
                             </div>
                         </div>
                     </div>

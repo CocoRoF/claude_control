@@ -154,6 +154,10 @@ async def lifespan(app: FastAPI):
     proxy = get_internal_proxy()
     await proxy.close()
 
+    # Internal Proxy client shutdown
+    proxy = get_internal_proxy()
+    await proxy.close()
+
     # Cleanup all sessions (10 second total timeout)
     async def cleanup_all_sessions():
         sessions = session_manager.list_sessions()

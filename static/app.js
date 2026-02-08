@@ -248,7 +248,6 @@ function selectSession(sessionId) {
     if (session) {
         showCommandPanel(session);
         showLogsPanel(session);
-        showStoragePanel(session);
     }
 }
 
@@ -353,9 +352,6 @@ async function confirmDeleteSession() {
             // Hide logs panel
             document.getElementById('no-session-logs-message').classList.remove('hidden');
             document.getElementById('logs-panel').classList.add('hidden');
-            // Hide storage panel
-            document.getElementById('no-session-storage-message').classList.remove('hidden');
-            document.getElementById('storage-panel').classList.add('hidden');
             // Clear input field
             document.getElementById('command-input').value = '';
         }
@@ -703,7 +699,7 @@ function renderBatchResults(result) {
             <div class="batch-result-output">
                 ${escapeHtml(r.success ? (r.output || 'No output') : (r.error || 'Unknown error'))}
             </div>
-            ${r.duration_ms ? `<small class="text-muted">Duration: ${r.duration_ms}ms</small>` : ''}
+            ${r.duration_ms ? `<small class="text-muted">Duration: ${r.duration_ms}ms</small>` : ''}}
         </div>
     `).join('');
 
@@ -753,10 +749,10 @@ function switchTab(tabName) {
         loadSessionLogs();
     }
 
-    // Load storage files when switching to storage tab
-    if (tabName === 'storage' && state.selectedSessionId) {
-        loadStorageFiles();
+    // Load storage when switching to storage tab
+    if (tabName === 'storage') {
         refreshStorage();
+    }
 
     // Initialize or sync playground view
     if (tabName === 'playground') {
@@ -825,7 +821,7 @@ function syncPlaygroundSessions() {
             countEl.textContent = `${state.sessions.length} citizen${state.sessions.length !== 1 ? 's' : ''}`;
         }
 
-        const emptyState = document.getElementById('playground-empty-state');
+        const emptyState = document.getElementById('playground-empty-state');;
         if (emptyState) {
             emptyState.style.display = state.sessions.length === 0 ? 'block' : 'none';
         }
@@ -891,194 +887,6 @@ function playgroundZoomOut() {
 function playgroundResetView() {
     const scene = window.Playground.Scene;
     if (scene) scene.resetView();
-}
-
-// ========== Storage Tab ==========
-
-// Storage state
-let currentStoragePath = '';
-
-function showStoragePanel(session) {
-    document.getElementById('no-session-storage-message').classList.add('hidden');
-    document.getElementById('storage-panel').classList.remove('hidden');
-
-    // Update title
-    document.getElementById('storage-session-title').textContent =
-        `Storage: ${session.session_name || session.session_id.substring(0, 8)}`;
-
-    // Reset path and load files
-    currentStoragePath = '';
-    loadStorageFiles();
-}
-
-async function loadStorageFiles() {
-    const sessionId = state.selectedSessionId;
-    const container = document.getElementById('storage-content');
-
-    if (!sessionId) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <p>Select a session to browse storage</p>
-            </div>
-        `;
-        return;
-    }
-
-    // Show loading
-    container.innerHTML = '<div class="loading">Loading files...</div>';
-
-    try {
-        const url = `/api/sessions/${sessionId}/storage${currentStoragePath ? `?path=${encodeURIComponent(currentStoragePath)}` : ''}`;
-        const result = await apiCall(url);
-
-        // Update storage path display
-        document.getElementById('storage-path').textContent = result.storage_path || '';
-
-        // Update breadcrumb
-        updateStorageBreadcrumb();
-
-        // Update up button state
-        document.getElementById('storage-up-btn').disabled = !currentStoragePath;
-
-        if (!result.files || result.files.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <p>No files in this directory</p>
-                </div>
-            `;
-            return;
-        }
-
-        // Sort: directories first, then files
-        const sortedFiles = [...result.files].sort((a, b) => {
-            if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-            return a.name.localeCompare(b.name);
-        });
-
-        container.innerHTML = `
-            <div class="storage-file-list">
-                ${sortedFiles.map(file => `
-                    <div class="storage-file-item ${file.is_dir ? 'is-directory' : ''}"
-                         onclick="${file.is_dir ? `navigateToStorage('${escapeHtml(file.name)}')` : `previewStorageFile('${escapeHtml(file.path)}')`}">
-                        <span class="file-icon">${file.is_dir ? '📁' : getFileIcon(file.name)}</span>
-                        <div class="file-info">
-                            <span class="file-name">${escapeHtml(file.name)}</span>
-                            <span class="file-meta">
-                                ${file.is_dir ? '' : formatFileSize(file.size)}
-                                ${file.modified_at ? ` • ${formatDate(file.modified_at)}` : ''}
-                            </span>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    } catch (error) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <p>Failed to load files: ${error.message}</p>
-            </div>
-        `;
-    }
-}
-
-function navigateToStorage(dirname) {
-    currentStoragePath = currentStoragePath ? `${currentStoragePath}/${dirname}` : dirname;
-    loadStorageFiles();
-}
-
-function navigateStorageUp() {
-    if (!currentStoragePath) return;
-    const parts = currentStoragePath.split('/');
-    parts.pop();
-    currentStoragePath = parts.join('/');
-    loadStorageFiles();
-}
-
-function navigateToStoragePath(path) {
-    currentStoragePath = path;
-    loadStorageFiles();
-}
-
-function updateStorageBreadcrumb() {
-    const breadcrumb = document.getElementById('storage-breadcrumb');
-    if (!breadcrumb) return;
-
-    const parts = currentStoragePath ? currentStoragePath.split('/') : [];
-    let html = `<span class="breadcrumb-item ${!currentStoragePath ? 'active' : ''}" onclick="navigateToStoragePath('')">root</span>`;
-
-    let pathSoFar = '';
-    parts.forEach((part, i) => {
-        pathSoFar += (pathSoFar ? '/' : '') + part;
-        const isLast = i === parts.length - 1;
-        html += `<span class="breadcrumb-separator">/</span>`;
-        html += `<span class="breadcrumb-item ${isLast ? 'active' : ''}" onclick="navigateToStoragePath('${pathSoFar}')">${escapeHtml(part)}</span>`;
-    });
-
-    breadcrumb.innerHTML = html;
-}
-
-async function previewStorageFile(filePath) {
-    const sessionId = state.selectedSessionId;
-    if (!sessionId) return;
-
-    const previewPanel = document.getElementById('storage-preview');
-    const previewContent = document.getElementById('preview-content');
-    const previewFilename = document.getElementById('preview-filename');
-
-    // Show preview panel
-    previewPanel.classList.remove('hidden');
-    previewFilename.textContent = filePath.split('/').pop() || filePath;
-    previewContent.textContent = 'Loading...';
-
-    try {
-        const result = await apiCall(`/api/sessions/${sessionId}/storage/${encodeURIComponent(filePath)}`);
-        previewContent.textContent = result.content || '(empty file)';
-    } catch (error) {
-        previewContent.textContent = `Error loading file: ${error.message}`;
-    }
-}
-
-function closeStoragePreview() {
-    document.getElementById('storage-preview').classList.add('hidden');
-}
-
-function getFileIcon(filename) {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    const icons = {
-        'js': '📜', 'ts': '📜', 'jsx': '📜', 'tsx': '📜',
-        'py': '🐍', 'rb': '💎', 'go': '🐹', 'rs': '🦀',
-        'html': '🌐', 'css': '🎨', 'scss': '🎨', 'less': '🎨',
-        'json': '📋', 'yaml': '📋', 'yml': '📋', 'toml': '📋',
-        'md': '📝', 'txt': '📄', 'log': '📄',
-        'png': '🖼️', 'jpg': '🖼️', 'jpeg': '🖼️', 'gif': '🖼️', 'svg': '🖼️',
-        'pdf': '📕', 'doc': '📘', 'docx': '📘',
-        'zip': '📦', 'tar': '📦', 'gz': '📦',
-        'sh': '⚙️', 'bash': '⚙️', 'zsh': '⚙️',
-        'env': '🔒', 'gitignore': '🔒'
-    };
-    return icons[ext] || '📄';
-}
-
-function formatFileSize(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
-}
-
-function formatDate(isoString) {
-    if (!isoString) return '';
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    } catch {
-        return '';
-    }
 }
 
 // ========== Modals ==========
