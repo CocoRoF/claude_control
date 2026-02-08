@@ -628,9 +628,11 @@ class ClaudeProcess:
                     cmd.append("--dangerously-skip-permissions")
                     logger.info(f"[{self.session_id}] 🤖 Autonomous mode: --dangerously-skip-permissions enabled")
 
-                # Specify model
-                if self.model:
-                    cmd.extend(["--model", self.model])
+                # Specify model (session model > env default)
+                effective_model = self.model or os.environ.get('ANTHROPIC_MODEL')
+                if effective_model:
+                    cmd.extend(["--model", effective_model])
+                    logger.info(f"[{self.session_id}] 🤖 Using model: {effective_model}")
 
                 # Specify max turns (execution setting > session setting)
                 effective_max_turns = max_turns or self.max_turns
