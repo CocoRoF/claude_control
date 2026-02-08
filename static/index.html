@@ -108,11 +108,10 @@
             <section class="main-panel">
                 <!-- Tab Navigation -->
                 <div class="tab-navigation">
-                    <button class="tab-btn" data-tab="playground" onclick="switchTab('playground')">
-                        <span style="margin-right:4px">🏙️</span>Playground
-                    </button>
+                    <button class="tab-btn" data-tab="playground" onclick="switchTab('playground')">Playground</button>
                     <button class="tab-btn active" data-tab="command" onclick="switchTab('command')">Command</button>
                     <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">Logs</button>
+                    <button class="tab-btn" data-tab="storage" onclick="switchTab('storage')">Storage</button>
                     <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">Batch</button>
                 </div>
 
@@ -272,6 +271,29 @@
                             </div>
                             <div class="batch-results" id="batch-results">
                                 <!-- Batch results will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Storage Tab -->
+                    <div class="tab-pane" id="storage-tab">
+                        <div class="storage-panel">
+                            <div class="storage-header">
+                                <h3>Session Storage</h3>
+                                <div class="storage-actions">
+                                    <button class="btn btn-sm" onclick="refreshStorage()">🔄 Refresh</button>
+                                </div>
+                            </div>
+                            <div class="storage-content">
+                                <div class="storage-tree" id="storage-tree">
+                                    <p class="storage-placeholder">Select a session to view its storage</p>
+                                </div>
+                                <div class="storage-preview" id="storage-preview">
+                                    <div class="preview-header">
+                                        <span id="preview-filename">No file selected</span>
+                                    </div>
+                                    <pre class="preview-content" id="preview-content"></pre>
+                                </div>
                             </div>
                         </div>
                     </div>
