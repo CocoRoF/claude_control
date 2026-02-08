@@ -181,6 +181,9 @@ class ClaudeProcess:
             Path(self._storage_path).mkdir(parents=True, exist_ok=True)
             logger.info(f"[{self.session_id}] Storage created: {self._storage_path}")
 
+            # Create session info file for tools to read
+            self._create_session_info_file()
+
             # Create working_dir if different from storage path
             if self.working_dir != self._storage_path:
                 Path(self.working_dir).mkdir(parents=True, exist_ok=True)
@@ -214,6 +217,29 @@ class ClaudeProcess:
             self.error_message = str(e)
             logger.error(f"[{self.session_id}] Failed to initialize session: {e}")
             return False
+
+    def _create_session_info_file(self) -> None:
+        """
+        Create .claude_session.json with session information.
+
+        This file is read by manager tools to identify the current session.
+        Placed in storage_path so tools can find it via cwd.
+        """
+        import json
+        session_info = {
+            "session_id": self.session_id,
+            "session_name": self.session_name,
+            "role": self.role,
+            "manager_id": self.manager_id,
+            "storage_path": self._storage_path,
+            "created_at": self.created_at.isoformat()
+        }
+
+        info_path = Path(self._storage_path) / ".claude_session.json"
+        with open(info_path, 'w', encoding='utf-8') as f:
+            json.dump(session_info, f, indent=2)
+
+        logger.info(f"[{self.session_id}] Session info file created: {info_path}")
 
     async def _create_mcp_config(self) -> None:
         """
