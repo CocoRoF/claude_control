@@ -448,7 +448,8 @@ class ClaudeProcess:
         model: Optional[str] = None,
         max_turns: Optional[int] = None,
         storage_root: Optional[str] = None,
-        mcp_config: Optional[MCPConfig] = None
+        mcp_config: Optional[MCPConfig] = None,
+        system_prompt: Optional[str] = None
     ):
         self.session_id = session_id
         self.session_name = session_name
@@ -456,6 +457,7 @@ class ClaudeProcess:
         self.max_turns = max_turns
         self.env_vars = env_vars or {}
         self.mcp_config = mcp_config
+        self.system_prompt = system_prompt  # Store system prompt for all executions
 
         # Storage configuration (using Path for cross-platform compatibility)
         self._storage_root = storage_root or DEFAULT_STORAGE_ROOT
@@ -469,6 +471,10 @@ class ClaudeProcess:
         self.status = SessionStatus.STOPPED
         self.error_message: Optional[str] = None
         self.created_at = now_kst()
+
+        # Execution tracking for --resume support
+        self._execution_count = 0
+        self._conversation_id: Optional[str] = None
 
         # Claude CLI path (set during initialize)
         self._claude_path: Optional[str] = None
@@ -568,7 +574,8 @@ class ClaudeProcess:
         timeout: float = CLAUDE_DEFAULT_TIMEOUT,
         skip_permissions: Optional[bool] = None,
         system_prompt: Optional[str] = None,
-        max_turns: Optional[int] = None
+        max_turns: Optional[int] = None,
+        resume: Optional[bool] = None
     ) -> Dict:
         """
         Execute a prompt with Claude.
@@ -579,6 +586,7 @@ class ClaudeProcess:
             skip_permissions: Skip permission prompts (None uses environment variable).
             system_prompt: Additional system prompt (for autonomous mode instructions).
             max_turns: Maximum turns for this execution (None uses session setting).
+            resume: Whether to resume previous conversation (None = auto-detect).
 
         Returns:
             Result dictionary with success, output, error, cost_usd, duration_ms.
@@ -600,7 +608,13 @@ class ClaudeProcess:
 
                 # Build claude command (use stored full path for cross-platform compatibility)
                 claude_cmd = self._claude_path or find_claude_executable() or "claude"
-                cmd = [claude_cmd, "--print"]
+                cmd = [claude_cmd, "--print", "--verbose"]
+
+                # Resume previous conversation if we have a Claude CLI session ID
+                should_resume = resume if resume is not None else (self._execution_count > 0 and self._conversation_id)
+                if should_resume and self._conversation_id:
+                    cmd.extend(["--resume", self._conversation_id])
+                    logger.info(f"[{self.session_id}] 🔄 Resuming conversation: {self._conversation_id}")
 
                 # Skip permission prompts option (required for autonomous mode)
                 # 1. Function argument takes priority
@@ -623,15 +637,24 @@ class ClaudeProcess:
                 if effective_max_turns:
                     cmd.extend(["--max-turns", str(effective_max_turns)])
 
-                # Add system prompt (autonomous mode instructions)
-                if system_prompt:
-                    cmd.extend(["--append-system-prompt", system_prompt])
-                    logger.info(f"[{self.session_id}] 📝 Custom system prompt applied")
+                # Add system prompt (execution param > session default)
+                effective_system_prompt = system_prompt or self.system_prompt
 
-                # Add the prompt - use stdin for long prompts to avoid command line length limits
-                # Windows has stricter command line length limits (~8191 chars)
+                # Calculate total command line length to decide stdin usage
+                # Windows has stricter command line limits (~8191 chars)
                 max_cmd_length = 2000 if IS_WINDOWS else 8000
-                use_stdin = len(prompt) > max_cmd_length
+                total_length = len(prompt) + (len(effective_system_prompt) if effective_system_prompt else 0)
+                use_stdin = total_length > max_cmd_length
+
+                if effective_system_prompt:
+                    if use_stdin:
+                        # System prompt too long for command line - will be sent with prompt via stdin
+                        logger.info(f"[{self.session_id}] 📝 System prompt ({len(effective_system_prompt)} chars) - using stdin")
+                    else:
+                        cmd.extend(["--append-system-prompt", effective_system_prompt])
+                        logger.info(f"[{self.session_id}] 📝 System prompt applied ({len(effective_system_prompt)} chars)")
+
+                # Add the prompt
                 if not use_stdin:
                     cmd.extend(["-p", prompt])
 
@@ -652,9 +675,14 @@ class ClaudeProcess:
                 # Collect output
                 try:
                     if use_stdin:
-                        # Send prompt via stdin
+                        # Combine system prompt and user prompt for stdin
+                        stdin_content = prompt
+                        if effective_system_prompt:
+                            # Prepend system prompt instructions to the prompt
+                            stdin_content = f"[SYSTEM INSTRUCTIONS]\n{effective_system_prompt}\n[END SYSTEM INSTRUCTIONS]\n\n{prompt}"
+
                         stdout, stderr = await asyncio.wait_for(
-                            self._current_process.communicate(input=prompt.encode('utf-8')),
+                            self._current_process.communicate(input=stdin_content.encode('utf-8')),
                             timeout=timeout
                         )
                     else:
@@ -675,14 +703,41 @@ class ClaudeProcess:
                 stderr_text = stderr.decode('utf-8', errors='replace') if stderr else ""
 
                 if self._current_process.returncode == 0:
-                    logger.info(f"[{self.session_id}] ✅ Execution completed in {duration_ms}ms")
+                    self._execution_count += 1
+                    logger.info(f"[{self.session_id}] ✅ Execution #{self._execution_count} completed in {duration_ms}ms")
+
+                    # Try to extract Claude CLI session ID from verbose output for --resume
+                    # Check both stdout and stderr (verbose output often goes to stderr)
+                    import re
+                    combined_output = stdout_text + "\n" + stderr_text
+                    session_patterns = [
+                        r'Session[:\s]+([a-f0-9-]{20,})',
+                        r'session_id[:\s]+([a-f0-9-]{20,})',
+                        r'conversation[:\s]+([a-f0-9-]{20,})',
+                        r'"id":\s*"([a-f0-9-]{20,})"',
+                    ]
+                    for pattern in session_patterns:
+                        match = re.search(pattern, combined_output, re.IGNORECASE)
+                        if match:
+                            self._conversation_id = match.group(1)
+                            logger.info(f"[{self.session_id}] 📝 Captured conversation ID: {self._conversation_id}")
+                            break
+
+                    # Save work log
+                    await self._append_work_log(prompt, stdout_text, duration_ms, success=True)
+
                     return {
                         "success": True,
                         "output": stdout_text,
-                        "duration_ms": duration_ms
+                        "duration_ms": duration_ms,
+                        "execution_count": self._execution_count
                     }
                 else:
                     logger.error(f"[{self.session_id}] ❌ Execution failed: {stderr_text}")
+
+                    # Save error log
+                    await self._append_work_log(prompt, stderr_text, duration_ms, success=False)
+
                     return {
                         "success": False,
                         "output": stdout_text,
@@ -698,6 +753,68 @@ class ClaudeProcess:
                 }
             finally:
                 self._current_process = None
+
+    async def _append_work_log(
+        self,
+        prompt: str,
+        output: str,
+        duration_ms: int,
+        success: bool
+    ):
+        """
+        Append execution log to WORK_LOG.md in storage directory.
+
+        This creates a persistent record of all work performed by this session.
+        """
+        try:
+            log_path = Path(self._storage_path) / "WORK_LOG.md"
+            timestamp = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+            status_emoji = "✅" if success else "❌"
+
+            # Truncate long content for log readability
+            prompt_preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
+            output_preview = output[:500] + "..." if len(output) > 500 else output
+
+            log_entry = f"""
+---
+
+## [{status_emoji}] Execution #{self._execution_count} - {timestamp}
+
+**Duration:** {duration_ms}ms
+
+### Prompt
+```
+{prompt_preview}
+```
+
+### Output
+```
+{output_preview}
+```
+
+"""
+
+            # Create file with header if it doesn't exist
+            if not log_path.exists():
+                header = f"""# Work Log - Session {self.session_id}
+
+**Session Name:** {self.session_name or 'Unnamed'}
+**Created:** {self.created_at.strftime("%Y-%m-%d %H:%M:%S")}
+**Model:** {self.model or 'Default'}
+
+This file contains a log of all work performed by this session.
+
+"""
+                log_path.write_text(header, encoding='utf-8')
+
+            # Append log entry
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(log_entry)
+
+            logger.debug(f"[{self.session_id}] Work log updated: {log_path}")
+
+        except Exception as e:
+            logger.warning(f"[{self.session_id}] Failed to write work log: {e}")
 
     async def _kill_current_process(self):
         """Forcefully terminate the currently running process (cross-platform)."""
@@ -729,7 +846,7 @@ class ClaudeProcess:
 
     def list_storage_files(self, subpath: str = "") -> List[Dict]:
         """
-        List files in the storage directory.
+        List all files in the storage directory recursively.
 
         Args:
             subpath: Subdirectory path (empty string for root).
@@ -746,15 +863,23 @@ class ClaudeProcess:
 
         files = []
         try:
-            for item in target_path.iterdir():
-                stat = item.stat()
-                files.append({
-                    "name": item.name,
-                    "path": str(item.relative_to(self._storage_path)),
-                    "is_dir": item.is_dir(),
-                    "size": stat.st_size if item.is_file() else None,
-                    "modified_at": datetime.fromtimestamp(stat.st_mtime)
-                })
+            # Recursively walk through all files
+            for item in target_path.rglob("*"):
+                if item.is_file():
+                    try:
+                        stat = item.stat()
+                        rel_path = str(item.relative_to(self._storage_path))
+                        # Normalize path separators
+                        rel_path = rel_path.replace("\\", "/")
+                        files.append({
+                            "name": item.name,
+                            "path": rel_path,
+                            "is_dir": False,
+                            "size": stat.st_size,
+                            "modified_at": datetime.fromtimestamp(stat.st_mtime)
+                        })
+                    except (OSError, ValueError) as e:
+                        logger.debug(f"[{self.session_id}] Skipping file {item}: {e}")
         except Exception as e:
             logger.error(f"[{self.session_id}] Failed to list files: {e}")
 

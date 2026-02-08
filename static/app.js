@@ -16,7 +16,9 @@ const state = {
     promptContents: {}, // { promptName: content }
     // Auto-continue state
     isAutoContinuing: false,
-    autoContinueCount: 0
+    autoContinueCount: 0,
+    autoContinueRetries: 0,
+    maxRetries: 3
 };
 
 // Get or initialize session data
@@ -394,6 +396,7 @@ async function executeCommand(isContinuation = false) {
     if (autoContinue && !isContinuation) {
         state.isAutoContinuing = true;
         state.autoContinueCount = 0;
+        state.autoContinueRetries = 0;
         updateAutoContinueUI();
     }
 
@@ -421,6 +424,7 @@ async function executeCommand(isContinuation = false) {
 
         if (result.success) {
             state.autoContinueCount++;
+            state.autoContinueRetries = 0; // Reset retry counter on success
             const statusText = statusPrefix + `Completed in ${result.duration_ms}ms`;
             setExecutionStatus('success', statusText);
             const output = result.output || 'No output';
@@ -452,6 +456,20 @@ async function executeCommand(isContinuation = false) {
                 setExecutionStatus('success', `All done! (${state.autoContinueCount} iterations)`);
             }
         } else {
+            // Handle failure with retry logic for auto-continue
+            if (state.isAutoContinuing && state.autoContinueRetries < state.maxRetries) {
+                state.autoContinueRetries++;
+                const retryDelay = Math.min(5000 * state.autoContinueRetries, 15000);
+                setExecutionStatus('warning', `Retry ${state.autoContinueRetries}/${state.maxRetries} in ${retryDelay/1000}s...`);
+
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+
+                if (state.isAutoContinuing) {
+                    executeCommand(true);
+                    return;
+                }
+            }
+
             state.isAutoContinuing = false;
             updateAutoContinueUI();
 
@@ -468,6 +486,20 @@ async function executeCommand(isContinuation = false) {
             notifyCharacterRequestEnd(state.selectedSessionId, false);
         }
     } catch (error) {
+        // Handle network/timeout errors with retry logic
+        if (state.isAutoContinuing && state.autoContinueRetries < state.maxRetries) {
+            state.autoContinueRetries++;
+            const retryDelay = Math.min(5000 * state.autoContinueRetries, 15000);
+            setExecutionStatus('warning', `Network error. Retry ${state.autoContinueRetries}/${state.maxRetries} in ${retryDelay/1000}s...`);
+
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+
+            if (state.isAutoContinuing) {
+                executeCommand(true);
+                return;
+            }
+        }
+
         state.isAutoContinuing = false;
         updateAutoContinueUI();
 
@@ -724,7 +756,7 @@ function switchTab(tabName) {
     // Load storage files when switching to storage tab
     if (tabName === 'storage' && state.selectedSessionId) {
         loadStorageFiles();
-    }
+        refreshStorage();
 
     // Initialize or sync playground view
     if (tabName === 'playground') {
@@ -1104,6 +1136,183 @@ async function refreshAll() {
     await loadSessions();
     await loadPrompts();
     await checkHealth();
+}
+
+// ========== Storage Functions ==========
+
+async function refreshStorage() {
+    if (!state.selectedSessionId) {
+        showStoragePlaceholder('Select a session to view its storage');
+        return;
+    }
+
+    const storageTree = document.getElementById('storage-tree');
+    storageTree.innerHTML = '<p class="storage-placeholder">Loading...</p>';
+
+    try {
+        const response = await fetch(`/api/sessions/${state.selectedSessionId}/storage`);
+        if (!response.ok) {
+            if (response.status === 404) {
+                showStoragePlaceholder('No storage found for this session');
+                return;
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        renderStorageTree(data.files || []);
+    } catch (error) {
+        console.error('Failed to load storage:', error);
+        showStoragePlaceholder('Failed to load storage');
+    }
+}
+
+function showStoragePlaceholder(message) {
+    const storageTree = document.getElementById('storage-tree');
+    storageTree.innerHTML = `<p class="storage-placeholder">${message}</p>`;
+
+    const previewFilename = document.getElementById('preview-filename');
+    const previewContent = document.getElementById('preview-content');
+    previewFilename.textContent = 'No file selected';
+    previewContent.textContent = '';
+}
+
+function renderStorageTree(files) {
+    const storageTree = document.getElementById('storage-tree');
+
+    if (!files || files.length === 0) {
+        showStoragePlaceholder('Storage is empty');
+        return;
+    }
+
+    // Build tree structure
+    const tree = buildFileTree(files);
+    storageTree.innerHTML = renderTreeNode(tree, '');
+}
+
+function buildFileTree(files) {
+    const tree = { children: {}, files: [] };
+
+    for (const file of files) {
+        const parts = file.path.split('/').filter(p => p);
+        let current = tree;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            const part = parts[i];
+            if (!current.children[part]) {
+                current.children[part] = { children: {}, files: [] };
+            }
+            current = current.children[part];
+        }
+
+        current.files.push({
+            name: parts[parts.length - 1],
+            path: file.path,
+            size: file.size || 0
+        });
+    }
+
+    return tree;
+}
+
+function renderTreeNode(node, path) {
+    let html = '<ul class="file-tree">';
+
+    // Render folders first
+    for (const [name, child] of Object.entries(node.children)) {
+        const folderPath = path ? `${path}/${name}` : name;
+        html += `
+            <li class="file-tree-folder" data-path="${escapeHtml(folderPath)}">
+                <div class="file-tree-folder-header" onclick="toggleFolder(this.parentElement)">
+                    <span class="folder-toggle">▼</span>
+                    <span class="file-icon">📁</span>
+                    <span class="file-name">${escapeHtml(name)}</span>
+                </div>
+                <div class="file-tree-folder-children">
+                    ${renderTreeNode(child, folderPath)}
+                </div>
+            </li>
+        `;
+    }
+
+    // Render files
+    for (const file of node.files) {
+        const icon = getFileIcon(file.name);
+        const sizeStr = formatFileSize(file.size);
+        html += `
+            <li class="file-tree-item" data-path="${escapeHtml(file.path)}" onclick="loadStorageFile('${escapeHtml(file.path)}')">
+                <span class="file-icon">${icon}</span>
+                <span class="file-name">${escapeHtml(file.name)}</span>
+                <span class="file-size">${sizeStr}</span>
+            </li>
+        `;
+    }
+
+    html += '</ul>';
+    return html;
+}
+
+function toggleFolder(folderElement) {
+    folderElement.classList.toggle('collapsed');
+}
+
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const iconMap = {
+        'md': '📝',
+        'txt': '📄',
+        'json': '📋',
+        'js': '📜',
+        'py': '🐍',
+        'html': '🌐',
+        'css': '🎨',
+        'log': '📊',
+        'yml': '⚙️',
+        'yaml': '⚙️'
+    };
+    return iconMap[ext] || '📄';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+async function loadStorageFile(filePath) {
+    if (!state.selectedSessionId) return;
+
+    // Update active state in tree
+    document.querySelectorAll('.file-tree-item.active').forEach(el => el.classList.remove('active'));
+    const activeItem = document.querySelector(`.file-tree-item[data-path="${CSS.escape(filePath)}"]`);
+    if (activeItem) activeItem.classList.add('active');
+
+    const previewFilename = document.getElementById('preview-filename');
+    const previewContent = document.getElementById('preview-content');
+
+    previewFilename.textContent = filePath;
+    previewContent.textContent = 'Loading...';
+
+    try {
+        // Remove leading slash if present
+        const cleanPath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+        const response = await fetch(`/api/sessions/${state.selectedSessionId}/storage/${encodeURIComponent(cleanPath)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        previewContent.textContent = data.content || '(empty file)';
+    } catch (error) {
+        console.error('Failed to load file:', error);
+        previewContent.textContent = `Error loading file: ${error.message}`;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ========== Initialization ==========

@@ -119,7 +119,8 @@ class SessionManager:
             env_vars=request.env_vars,
             model=request.model,
             max_turns=request.max_turns,
-            mcp_config=merged_mcp_config  # Use merged MCP config
+            mcp_config=merged_mcp_config,  # Use merged MCP config
+            system_prompt=request.system_prompt  # System prompt for autonomous mode
         )
 
         # Initialize session
