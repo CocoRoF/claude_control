@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 # Buffer limit: 16MB
 STDIO_BUFFER_LIMIT = 16 * 1024 * 1024
 
-# Claude execution timeout (default 5 minutes)
-CLAUDE_DEFAULT_TIMEOUT = 300.0
+# Claude execution timeout (default 30 minutes)
+CLAUDE_DEFAULT_TIMEOUT = 1800.0
 
 # Platform detection
 IS_WINDOWS = platform.system() == 'Windows'
