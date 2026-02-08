@@ -436,18 +436,69 @@ body {
 }
 
 .checkbox-label {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.8125rem;
+    gap: 12px;
+    font-size: 0.875rem;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--text-primary);
+    user-select: none;
+    line-height: 1;
 }
 
 .checkbox-label input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--primary-color);
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 48px;
+    height: 26px;
+    min-width: 48px;
+    border: 2px solid var(--border-color);
+    border-radius: 13px;
+    background-color: transparent !important;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.checkbox-label input[type="checkbox"]::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: #666;
+    transition: all 0.2s ease;
+}
+
+.checkbox-label input[type="checkbox"]:checked {
+    background-color: #10b981 !important;
+    border-color: #10b981 !important;
+}
+
+.checkbox-label input[type="checkbox"]:checked::before {
+    left: calc(100% - 21px);
+    background-color: #fff;
+}
+
+.checkbox-label input[type="checkbox"]:hover {
+    border-color: #888;
+}
+
+.checkbox-label input[type="checkbox"]:checked:hover {
+    background-color: #059669 !important;
+    border-color: #059669 !important;
+}
+
+.checkbox-label input[type="checkbox"]:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
 }
 
 .input-label {
@@ -467,6 +518,13 @@ body {
     color: var(--text-primary);
     font-size: 0.8125rem;
     transition: border-color var(--transition-fast);
+    -moz-appearance: textfield;
+}
+
+.input-label input::-webkit-outer-spin-button,
+.input-label input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .input-label input:focus {
@@ -1035,6 +1093,31 @@ body {
     background-position: right 12px center;
     padding-right: 36px;
     cursor: pointer;
+}
+
+/* Number input spinner styling */
+.form-group input[type="number"] {
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    appearance: textfield;
+    padding-right: 40px;
+    position: relative;
+}
+
+.form-group input[type="number"]::-webkit-outer-spin-button,
+.form-group input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Custom number input wrapper - add via JavaScript or use native */
+input[type="number"].styled-number {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M5 0l5 6H0z'/%3E%3C/svg%3E"),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px top 10px, right 14px bottom 10px;
+    background-size: 8px 5px;
 }
 
 .form-group select option {

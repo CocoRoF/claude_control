@@ -187,7 +187,7 @@
                                     </label>
                                     <label class="input-label">
                                         Max Turns:
-                                        <input type="number" id="command-max-turns" value="50" min="1" max="100">
+                                        <input type="number" id="command-max-turns" value="100" min="1" max="500">
                                     </label>
                                 </div>
                                 <div class="command-actions">
@@ -307,14 +307,16 @@
                         <label for="new-session-model">Model</label>
                         <select id="new-session-model">
                             <option value="">Default</option>
-                            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
                             <option value="claude-opus-4-20250514">Claude Opus 4</option>
-                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                            <option value="claude-opus-4-0603">Claude Opus 4.5</option>
+                            <option value="claude-opus-4-20260115">Claude Opus 4.6</option>
+                            <option value="claude-sonnet-4-20260115">Claude Sonnet 4.5</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="new-session-max-turns">Max Turns</label>
-                        <input type="number" id="new-session-max-turns" value="50" min="1" max="100">
+                        <input type="number" id="new-session-max-turns" value="100" min="1" max="500">
                     </div>
                     <div class="form-group">
                         <label class="checkbox-label">

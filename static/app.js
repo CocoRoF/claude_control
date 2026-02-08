@@ -290,7 +290,7 @@ function showLogsPanel(session) {
 async function createSession() {
     const name = document.getElementById('new-session-name').value;
     const model = document.getElementById('new-session-model').value;
-    const maxTurns = parseInt(document.getElementById('new-session-max-turns').value) || 50;
+    const maxTurns = parseInt(document.getElementById('new-session-max-turns').value) || 100;
     const autonomous = document.getElementById('new-session-autonomous').checked;
 
     try {
@@ -861,7 +861,7 @@ function showCreateSessionModal() {
     document.getElementById('new-session-custom-prompt').value = '';
     document.getElementById('custom-prompt-group').classList.add('hidden');
     document.getElementById('new-session-model').value = '';
-    document.getElementById('new-session-max-turns').value = '50';
+    document.getElementById('new-session-max-turns').value = '100';
     document.getElementById('new-session-autonomous').checked = true;
 }
 
