@@ -1693,7 +1693,8 @@ input[type="number"].styled-number {
     display: flex;
     flex-direction: column;
     height: 100%;
-    gap: 16px;
+    padding: 24px;
+    gap: 20px;
 }
 
 .storage-header {
