@@ -3,6 +3,8 @@ Claude Code Process Manager
 
 Manages Claude CLI as subprocess instances.
 Each session has its own independent process and storage directory.
+
+Uses --output-format stream-json for real-time tool usage logging.
 """
 import asyncio
 import json
@@ -11,7 +13,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Callable
 from datetime import datetime
 
 from service.claude_manager.models import SessionStatus, MCPConfig
@@ -31,6 +33,13 @@ from service.claude_manager.storage_utils import (
     list_storage_files as _list_storage_files,
     read_storage_file as _read_storage_file,
 )
+from service.claude_manager.stream_parser import (
+    StreamParser,
+    StreamEvent,
+    StreamEventType,
+    ExecutionSummary,
+)
+from service.logging.session_logger import get_session_logger
 from service.utils.utils import now_kst
 
 logger = logging.getLogger(__name__)
@@ -225,7 +234,6 @@ class ClaudeProcess:
         This file is read by manager tools to identify the current session.
         Placed in storage_path so tools can find it via cwd.
         """
-        import json
         session_info = {
             "session_id": self.session_id,
             "session_name": self.session_name,
@@ -270,14 +278,16 @@ class ClaudeProcess:
         skip_permissions: Optional[bool] = None,
         system_prompt: Optional[str] = None,
         max_turns: Optional[int] = None,
-        resume: Optional[bool] = None
+        resume: Optional[bool] = None,
+        on_event: Optional[Callable[[StreamEvent], None]] = None
     ) -> Dict:
         """
-        Execute a prompt with Claude using direct Node.js execution.
+        Execute a prompt with Claude using streaming JSON output.
 
-        On Windows, this bypasses cmd.exe/PowerShell entirely by:
-        1. Calling node.exe directly with cli.js
-        2. Sending prompts via stdin (no command line length limits)
+        Uses --output-format stream-json for real-time parsing of:
+        - Tool invocations and their results
+        - Assistant messages
+        - Execution costs and timing
 
         Args:
             prompt: The prompt to send to Claude.
@@ -286,9 +296,11 @@ class ClaudeProcess:
             system_prompt: Additional system prompt (for autonomous mode instructions).
             max_turns: Maximum turns for this execution (None uses session setting).
             resume: Whether to resume previous conversation (None = auto-detect).
+            on_event: Callback for real-time stream events (tool use, messages, etc.).
 
         Returns:
-            Result dictionary with success, output, error, cost_usd, duration_ms.
+            Result dictionary with success, output, error, cost_usd, duration_ms,
+            tool_calls, and execution_summary.
         """
         async with self._execution_lock:
             if self.status != SessionStatus.RUNNING:
@@ -299,13 +311,53 @@ class ClaudeProcess:
 
             start_time = datetime.now()
 
-            try:
-                # Prepare environment variables (system + Claude-related + user-specified)
-                env = os.environ.copy()
-                env.update(get_claude_env_vars())  # Auto-add Claude Code environment variables
-                env.update(self.env_vars)  # Session-specific user environment variables
+            # Get session logger for real-time logging
+            session_logger = get_session_logger(self.session_id, create_if_missing=False)
 
-                # Get or find Node.js config
+            # Create real-time logging callback
+            def realtime_log_event(event: StreamEvent):
+                """Log stream events in real-time to session logger."""
+                # Call user-provided callback if any
+                if on_event:
+                    on_event(event)
+
+                # Log to session logger for UI visibility
+                if session_logger:
+                    if event.event_type == StreamEventType.SYSTEM_INIT:
+                        session_logger.log_stream_event("system_init", {
+                            "model": event.model,
+                            "tools": event.tools,
+                            "mcp_servers": event.mcp_servers
+                        })
+                    elif event.event_type == StreamEventType.TOOL_USE:
+                        if event.tool_name:
+                            session_logger.log_tool_use(
+                                tool_name=event.tool_name,
+                                tool_input=event.tool_input,
+                                tool_id=event.tool_use_id
+                            )
+                    elif event.event_type == StreamEventType.ASSISTANT_MESSAGE:
+                        # Log tool uses from assistant message content
+                        if event.tool_name:
+                            session_logger.log_tool_use(
+                                tool_name=event.tool_name,
+                                tool_input=event.tool_input,
+                                tool_id=event.tool_use_id
+                            )
+
+            # Initialize stream parser with real-time logging
+            stream_parser = StreamParser(
+                on_event=realtime_log_event,
+                session_id=self.session_id
+            )
+
+            try:
+                # Prepare environment variables
+                env = os.environ.copy()
+                env.update(get_claude_env_vars())
+                env.update(self.env_vars)
+
+                # Get Claude CLI config
                 node_config = self._node_config or find_claude_node_config()
                 if not node_config:
                     return {
@@ -313,16 +365,16 @@ class ClaudeProcess:
                         "error": "Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
                     }
 
-                # Build base arguments (without node.exe and cli.js - those are added by build_direct_node_command)
-                args = ["--print", "--verbose"]
+                # Build arguments with stream-json output format
+                args = ["--print", "--verbose", "--output-format", "stream-json"]
 
-                # Resume previous conversation if we have a Claude CLI session ID
+                # Resume previous conversation
                 should_resume = resume if resume is not None else (self._execution_count > 0 and self._conversation_id)
                 if should_resume and self._conversation_id:
                     args.extend(["--resume", self._conversation_id])
                     logger.info(f"[{self.session_id}] 🔄 Resuming conversation: {self._conversation_id}")
 
-                # Skip permission prompts option (required for autonomous mode)
+                # Skip permission prompts
                 should_skip_permissions = skip_permissions
                 if should_skip_permissions is None:
                     env_skip = os.environ.get('CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS', 'true').lower()
@@ -330,40 +382,35 @@ class ClaudeProcess:
 
                 if should_skip_permissions:
                     args.append("--dangerously-skip-permissions")
-                    logger.info(f"[{self.session_id}] 🤖 Autonomous mode: --dangerously-skip-permissions enabled")
+                    logger.info(f"[{self.session_id}] 🤖 Autonomous mode: permission bypass enabled")
 
-                # Specify model (session model > env default)
+                # Model selection
                 effective_model = self.model or os.environ.get('ANTHROPIC_MODEL')
                 if effective_model:
                     args.extend(["--model", effective_model])
                     logger.info(f"[{self.session_id}] 🤖 Using model: {effective_model}")
 
-                # Specify max turns (execution setting > session setting)
+                # Max turns
                 effective_max_turns = max_turns or self.max_turns
                 if effective_max_turns:
                     args.extend(["--max-turns", str(effective_max_turns)])
 
-                # Add system prompt (execution param > session default)
+                # System prompt
                 effective_system_prompt = system_prompt or self.system_prompt
-
-                # On Windows with direct node.exe execution, we can safely use stdin
-                # No command line length limits or escaping issues
-
                 if effective_system_prompt:
                     args.extend(["--append-system-prompt", effective_system_prompt])
                     logger.info(f"[{self.session_id}] 📝 System prompt applied ({len(effective_system_prompt)} chars)")
 
-                # Build final command: node.exe cli.js [args...]
-                # Note: prompt will be sent via stdin, not command line
+                # Build command
                 cmd = build_direct_node_command(node_config, args)
 
-                logger.info(f"[{self.session_id}] Executing: node cli.js {' '.join(args[:5])}...")
-                logger.info(f"[{self.session_id}] Prompt length: {len(prompt)} chars, using stdin")
+                logger.info(f"[{self.session_id}] 🚀 Executing with stream-json output...")
+                logger.info(f"[{self.session_id}] Prompt length: {len(prompt)} chars")
 
-                # Execute process using cross-platform helper (direct node.exe execution)
+                # Start process
                 self._current_process = await create_subprocess_cross_platform(
                     cmd,
-                    stdin=asyncio.subprocess.PIPE,  # Use stdin for prompt
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
@@ -371,65 +418,57 @@ class ClaudeProcess:
                     limit=STDIO_BUFFER_LIMIT
                 )
 
-                # Collect output - send prompt via stdin
-                try:
-                    stdout, stderr = await asyncio.wait_for(
-                        self._current_process.communicate(input=prompt.encode('utf-8')),
-                        timeout=timeout
-                    )
-                except asyncio.TimeoutError:
-                    logger.error(f"[{self.session_id}] Execution timed out after {timeout}s")
-                    await self._kill_current_process()
-                    return {
-                        "success": False,
-                        "error": f"Execution timed out after {timeout} seconds"
-                    }
+                # Stream output with real-time parsing
+                result = await self._stream_execute(
+                    process=self._current_process,
+                    prompt=prompt,
+                    timeout=timeout,
+                    stream_parser=stream_parser
+                )
 
                 duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-                stdout_text = stdout.decode('utf-8', errors='replace') if stdout else ""
-                stderr_text = stderr.decode('utf-8', errors='replace') if stderr else ""
 
-                if self._current_process.returncode == 0:
+                # Get execution summary
+                summary = stream_parser.get_summary()
+
+                # Update conversation ID for resume support
+                if summary.session_id:
+                    self._conversation_id = summary.session_id
+                    logger.info(f"[{self.session_id}] 📝 Captured conversation ID: {self._conversation_id}")
+
+                if result["success"]:
                     self._execution_count += 1
                     logger.info(f"[{self.session_id}] ✅ Execution #{self._execution_count} completed in {duration_ms}ms")
+                    logger.info(f"[{self.session_id}] 🔧 Tool calls: {len(summary.tool_calls)}, Cost: ${summary.total_cost_usd:.6f}")
 
-                    # Try to extract Claude CLI session ID from verbose output for --resume
-                    # Check both stdout and stderr (verbose output often goes to stderr)
-                    combined_output = stdout_text + "\n" + stderr_text
-                    session_patterns = [
-                        r'Session[:\s]+([a-f0-9-]{20,})',
-                        r'session_id[:\s]+([a-f0-9-]{20,})',
-                        r'conversation[:\s]+([a-f0-9-]{20,})',
-                        r'"id":\s*"([a-f0-9-]{20,})"',
-                    ]
-                    for pattern in session_patterns:
-                        match = re.search(pattern, combined_output, re.IGNORECASE)
-                        if match:
-                            self._conversation_id = match.group(1)
-                            logger.info(f"[{self.session_id}] 📝 Captured conversation ID: {self._conversation_id}")
-                            break
+                    # Log tool call details
+                    for i, tool_call in enumerate(summary.tool_calls, 1):
+                        tool_name = tool_call.get("name", "unknown")
+                        logger.info(f"[{self.session_id}]   [{i}] {tool_name}")
 
-                    # Save work log
-                    await self._append_work_log(prompt, stdout_text, duration_ms, success=True)
+                # Save work log with tool details
+                await self._append_work_log(
+                    prompt=prompt,
+                    output=summary.final_output,
+                    duration_ms=duration_ms,
+                    success=result["success"],
+                    tool_calls=summary.tool_calls,
+                    cost_usd=summary.total_cost_usd
+                )
 
-                    return {
-                        "success": True,
-                        "output": stdout_text,
-                        "duration_ms": duration_ms,
-                        "execution_count": self._execution_count
-                    }
-                else:
-                    logger.error(f"[{self.session_id}] ❌ Execution failed: {stderr_text}")
-
-                    # Save error log
-                    await self._append_work_log(prompt, stderr_text, duration_ms, success=False)
-
-                    return {
-                        "success": False,
-                        "output": stdout_text,
-                        "error": stderr_text or f"Process exited with code {self._current_process.returncode}",
-                        "duration_ms": duration_ms
-                    }
+                return {
+                    "success": result["success"],
+                    "output": summary.final_output,
+                    "error": result.get("error") or summary.error_message,
+                    "duration_ms": duration_ms,
+                    "cost_usd": summary.total_cost_usd,
+                    "execution_count": self._execution_count,
+                    "tool_calls": summary.tool_calls,
+                    "num_turns": summary.num_turns,
+                    "usage": summary.usage,
+                    "model": summary.model,
+                    "stop_reason": summary.stop_reason
+                }
 
             except Exception as e:
                 logger.error(f"[{self.session_id}] Execution error: {e}", exc_info=True)
@@ -440,17 +479,103 @@ class ClaudeProcess:
             finally:
                 self._current_process = None
 
+    async def _stream_execute(
+        self,
+        process: asyncio.subprocess.Process,
+        prompt: str,
+        timeout: float,
+        stream_parser: StreamParser
+    ) -> Dict:
+        """
+        Execute with streaming output parsing.
+
+        Reads stdout line by line and parses each JSON event.
+        """
+        stdout_lines: List[str] = []
+        stderr_lines: List[str] = []
+
+        async def read_stdout():
+            """Read stdout and parse stream-json lines."""
+            while True:
+                try:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    line_str = line.decode('utf-8', errors='replace').strip()
+                    if line_str:
+                        stdout_lines.append(line_str)
+                        # Parse each JSON line for real-time events
+                        stream_parser.parse_line(line_str)
+                except Exception as e:
+                    logger.warning(f"[{self.session_id}] stdout read error: {e}")
+                    break
+
+        async def read_stderr():
+            """Read stderr for error messages."""
+            while True:
+                try:
+                    line = await process.stderr.readline()
+                    if not line:
+                        break
+                    line_str = line.decode('utf-8', errors='replace').strip()
+                    if line_str:
+                        stderr_lines.append(line_str)
+                        logger.debug(f"[{self.session_id}] stderr: {line_str}")
+                except Exception as e:
+                    logger.warning(f"[{self.session_id}] stderr read error: {e}")
+                    break
+
+        try:
+            # Write prompt to stdin and close
+            process.stdin.write(prompt.encode('utf-8'))
+            await process.stdin.drain()
+            process.stdin.close()
+            await process.stdin.wait_closed()
+
+            # Read stdout and stderr concurrently with timeout
+            await asyncio.wait_for(
+                asyncio.gather(read_stdout(), read_stderr()),
+                timeout=timeout
+            )
+
+            # Wait for process to complete
+            await asyncio.wait_for(process.wait(), timeout=10.0)
+
+        except asyncio.TimeoutError:
+            logger.error(f"[{self.session_id}] Execution timed out after {timeout}s")
+            await self._kill_current_process()
+            return {
+                "success": False,
+                "error": f"Execution timed out after {timeout} seconds"
+            }
+
+        success = process.returncode == 0
+        error = None
+
+        if not success and stderr_lines:
+            error = "\n".join(stderr_lines)
+
+        return {
+            "success": success,
+            "error": error,
+            "stdout_lines": stdout_lines,
+            "stderr_lines": stderr_lines
+        }
+
     async def _append_work_log(
         self,
         prompt: str,
         output: str,
         duration_ms: int,
-        success: bool
+        success: bool,
+        tool_calls: Optional[List[Dict]] = None,
+        cost_usd: Optional[float] = None
     ):
         """
         Append execution log to WORK_LOG.md in storage directory.
 
-        This creates a persistent record of all work performed by this session.
+        This creates a persistent record of all work performed by this session,
+        including detailed tool usage information.
         """
         try:
             log_path = Path(self._storage_path) / "WORK_LOG.md"
@@ -461,18 +586,34 @@ class ClaudeProcess:
             prompt_preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
             output_preview = output[:500] + "..." if len(output) > 500 else output
 
+            # Format tool calls
+            tool_section = ""
+            if tool_calls:
+                tool_section = "\n### Tool Calls\n"
+                for i, tool in enumerate(tool_calls, 1):
+                    tool_name = tool.get("name", "unknown")
+                    tool_input = tool.get("input", {})
+                    # Truncate tool input for readability
+                    input_str = json.dumps(tool_input, ensure_ascii=False)
+                    if len(input_str) > 200:
+                        input_str = input_str[:200] + "..."
+                    tool_section += f"- **[{i}] {tool_name}**: `{input_str}`\n"
+
+            # Format cost
+            cost_str = f"**Cost:** ${cost_usd:.6f}\n" if cost_usd else ""
+
             log_entry = f"""
 ---
 
 ## [{status_emoji}] Execution #{self._execution_count} - {timestamp}
 
 **Duration:** {duration_ms}ms
-
+{cost_str}
 ### Prompt
 ```
 {prompt_preview}
 ```
-
+{tool_section}
 ### Output
 ```
 {output_preview}

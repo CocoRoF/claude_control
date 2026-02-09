@@ -11,6 +11,7 @@ Modules:
     - platform_utils: Cross-platform utilities
     - cli_discovery: Claude CLI discovery utilities
     - storage_utils: Storage and gitignore filtering utilities
+    - stream_parser: Claude CLI stream-json output parser
 """
 from service.claude_manager.models import (
     SessionStatus,
@@ -21,6 +22,7 @@ from service.claude_manager.models import (
     StorageFile,
     StorageListResponse,
     StorageFileContent,
+    ToolCallInfo,
     # MCP config models
     MCPConfig,
     MCPServerStdio,
@@ -43,6 +45,12 @@ from service.claude_manager.storage_utils import (
     list_storage_files,
     read_storage_file,
 )
+from service.claude_manager.stream_parser import (
+    StreamParser,
+    StreamEvent,
+    StreamEventType,
+    ExecutionSummary,
+)
 
 __all__ = [
     # Models
@@ -54,6 +62,7 @@ __all__ = [
     'StorageFile',
     'StorageListResponse',
     'StorageFileContent',
+    'ToolCallInfo',
     # MCP Models
     'MCPConfig',
     'MCPServerStdio',
@@ -76,4 +85,9 @@ __all__ = [
     'DEFAULT_IGNORE_PATTERNS',
     'list_storage_files',
     'read_storage_file',
+    # Stream Parser
+    'StreamParser',
+    'StreamEvent',
+    'StreamEventType',
+    'ExecutionSummary',
 ]

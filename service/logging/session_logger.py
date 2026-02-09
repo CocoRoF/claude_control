@@ -6,7 +6,6 @@ Each session gets its own log file in the logs/ directory.
 """
 import json
 import logging
-import os
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -26,7 +25,10 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
     COMMAND = "COMMAND"
     RESPONSE = "RESPONSE"
-    MANAGER_EVENT = "MANAGER"  # Manager-specific events for hierarchical management
+    TOOL_USE = "TOOL"           # Tool invocation events
+    TOOL_RESULT = "TOOL_RES"    # Tool execution results
+    STREAM_EVENT = "STREAM"     # Stream-json events
+    MANAGER_EVENT = "MANAGER"   # Manager-specific events for hierarchical management
 
 
 class LogEntry:
@@ -211,7 +213,9 @@ class SessionLogger:
         output: Optional[str] = None,
         error: Optional[str] = None,
         duration_ms: Optional[int] = None,
-        cost_usd: Optional[float] = None
+        cost_usd: Optional[float] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        num_turns: Optional[int] = None
     ):
         """
         Log a response from Claude.
@@ -222,6 +226,8 @@ class SessionLogger:
             error: Error message if failed
             duration_ms: Execution duration in milliseconds
             cost_usd: API cost in USD
+            tool_calls: List of tool calls made during execution
+            num_turns: Number of conversation turns
         """
         # Store full message for log file
         output_length = len(output) if output else 0
@@ -235,7 +241,9 @@ class SessionLogger:
             "cost_usd": cost_usd,
             "output_length": output_length,
             "is_truncated": is_truncated,
-            "preview": preview if success else None
+            "preview": preview if success else None,
+            "tool_call_count": len(tool_calls) if tool_calls else 0,
+            "num_turns": num_turns
         }
         # Remove None values
         metadata = {k: v for k, v in metadata.items() if v is not None}
@@ -247,6 +255,120 @@ class SessionLogger:
             message = f"FAILED: {error}"
 
         self.log(LogLevel.RESPONSE, message, metadata)
+
+        # Log individual tool calls
+        if tool_calls:
+            for tool_call in tool_calls:
+                self.log_tool_use(
+                    tool_name=tool_call.get("name", "unknown"),
+                    tool_input=tool_call.get("input"),
+                    tool_id=tool_call.get("id")
+                )
+
+    def log_tool_use(
+        self,
+        tool_name: str,
+        tool_input: Optional[Dict[str, Any]] = None,
+        tool_id: Optional[str] = None
+    ):
+        """
+        Log a tool invocation event.
+
+        Args:
+            tool_name: Name of the tool being called
+            tool_input: Input parameters to the tool
+            tool_id: Unique ID for this tool use
+        """
+        # Truncate tool input for log readability
+        input_str = json.dumps(tool_input, ensure_ascii=False) if tool_input else "{}"
+        is_truncated = len(input_str) > 500
+        input_preview = input_str[:500] + "..." if is_truncated else input_str
+
+        metadata = {
+            "type": "tool_use",
+            "tool_name": tool_name,
+            "tool_id": tool_id,
+            "input_preview": input_preview,
+            "input_length": len(input_str),
+            "is_truncated": is_truncated
+        }
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        message = f"TOOL: {tool_name}"
+        self.log(LogLevel.TOOL_USE, message, metadata)
+
+    def log_tool_result(
+        self,
+        tool_name: str,
+        tool_id: Optional[str] = None,
+        result: Optional[str] = None,
+        is_error: bool = False,
+        duration_ms: Optional[int] = None
+    ):
+        """
+        Log a tool execution result.
+
+        Args:
+            tool_name: Name of the tool
+            tool_id: Unique ID for this tool use
+            result: Tool execution result
+            is_error: Whether the tool execution failed
+            duration_ms: Tool execution time
+        """
+        result_length = len(result) if result else 0
+        is_truncated = result_length > 500
+        result_preview = result[:500] + "..." if result and is_truncated else result
+
+        metadata = {
+            "type": "tool_result",
+            "tool_name": tool_name,
+            "tool_id": tool_id,
+            "is_error": is_error,
+            "result_preview": result_preview,
+            "result_length": result_length,
+            "duration_ms": duration_ms
+        }
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        status = "ERROR" if is_error else "OK"
+        message = f"TOOL_RESULT [{status}]: {tool_name}"
+        self.log(LogLevel.TOOL_RESULT, message, metadata)
+
+    def log_stream_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any]
+    ):
+        """
+        Log a stream-json event from Claude CLI.
+
+        Args:
+            event_type: Type of stream event (system_init, tool_use, result, etc.)
+            data: Event data
+        """
+        # Extract key information based on event type
+        preview = ""
+        if event_type == "system_init":
+            tools = data.get("tools", [])
+            model = data.get("model", "unknown")
+            preview = f"Model: {model}, Tools: {len(tools)}"
+        elif event_type == "tool_use":
+            tool_name = data.get("tool_name", "unknown")
+            preview = f"Tool: {tool_name}"
+        elif event_type == "result":
+            duration = data.get("duration_ms", 0)
+            cost = data.get("total_cost_usd", 0)
+            preview = f"Duration: {duration}ms, Cost: ${cost:.6f}"
+
+        metadata = {
+            "type": "stream_event",
+            "event_type": event_type,
+            "preview": preview,
+            "data": data
+        }
+
+        message = f"STREAM [{event_type}]: {preview}"
+        self.log(LogLevel.STREAM_EVENT, message, metadata)
 
     def log_session_event(self, event: str, details: Optional[Dict[str, Any]] = None):
         """

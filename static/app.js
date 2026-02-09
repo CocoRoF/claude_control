@@ -20,7 +20,10 @@ const state = {
     autoContinueRetries: 0,
     maxRetries: 3,
     // SSR initial state loaded flag
-    ssrInitialized: false
+    ssrInitialized: false,
+    // Logs auto-refresh state
+    logsAutoRefreshInterval: null,
+    logsAutoRefreshEnabled: true
 };
 
 // Initialize from SSR data if available
@@ -684,6 +687,38 @@ function clearOutput() {
 }
 
 // ========== Logs ==========
+
+// Start auto-refresh for logs (5 second interval)
+function startLogsAutoRefresh() {
+    if (state.logsAutoRefreshInterval) {
+        clearInterval(state.logsAutoRefreshInterval);
+    }
+    state.logsAutoRefreshInterval = setInterval(() => {
+        if (state.selectedSessionId && state.logsAutoRefreshEnabled) {
+            loadSessionLogs();
+        }
+    }, 5000);
+}
+
+// Stop auto-refresh for logs
+function stopLogsAutoRefresh() {
+    if (state.logsAutoRefreshInterval) {
+        clearInterval(state.logsAutoRefreshInterval);
+        state.logsAutoRefreshInterval = null;
+    }
+}
+
+// Toggle auto-refresh for logs
+function toggleLogsAutoRefresh() {
+    const checkbox = document.getElementById('logs-auto-refresh');
+    state.logsAutoRefreshEnabled = checkbox.checked;
+
+    if (state.logsAutoRefreshEnabled) {
+        startLogsAutoRefresh();
+    } else {
+        stopLogsAutoRefresh();
+    }
+}
 
 async function loadSessionLogs() {
     const sessionId = state.selectedSessionId;
@@ -1457,6 +1492,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Periodic refresh
     setInterval(checkHealth, 30000); // Health check every 30s
     setInterval(loadSessions, 60000); // Session list every 60s
+
+    // Start logs auto-refresh (default enabled)
+    startLogsAutoRefresh();
 
     // Handle resize events
     window.addEventListener('resize', () => {
