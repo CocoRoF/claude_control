@@ -18,8 +18,39 @@ const state = {
     isAutoContinuing: false,
     autoContinueCount: 0,
     autoContinueRetries: 0,
-    maxRetries: 3
+    maxRetries: 3,
+    // SSR initial state loaded flag
+    ssrInitialized: false
 };
+
+// Initialize from SSR data if available
+function initFromSSR() {
+    if (window.__INITIAL_STATE__ && !state.ssrInitialized) {
+        const ssr = window.__INITIAL_STATE__;
+        console.log('[SSR] Initializing from server-rendered state');
+
+        // Load sessions from SSR
+        if (ssr.sessions && Array.isArray(ssr.sessions)) {
+            state.sessions = ssr.sessions;
+            console.log(`[SSR] Loaded ${state.sessions.length} sessions`);
+        }
+
+        // Load prompts from SSR
+        if (ssr.prompts && Array.isArray(ssr.prompts)) {
+            state.prompts = ssr.prompts;
+            console.log(`[SSR] Loaded ${state.prompts.length} prompts`);
+        }
+
+        // Load health status from SSR
+        if (ssr.health) {
+            state.healthStatus = ssr.health.status === 'healthy' ? 'healthy' : 'error';
+        }
+
+        state.ssrInitialized = true;
+        return true;
+    }
+    return false;
+}
 
 // Get or initialize session data
 function getSessionData(sessionId) {
@@ -872,6 +903,15 @@ async function checkHealth() {
     }
 }
 
+function updateHealthUI(status) {
+    // Update health indicator based on SSR status
+    if (status === 'healthy') {
+        updateHealthIndicator('connected', `${state.sessions.length} sessions`);
+    } else {
+        updateHealthIndicator('disconnected', 'Disconnected');
+    }
+}
+
 function updateHealthIndicator(status, text) {
     const indicator = document.getElementById('health-indicator');
     const dot = indicator.querySelector('.health-dot');
@@ -1096,9 +1136,18 @@ function showSuccess(message) {
 }
 
 async function refreshAll() {
-    await loadSessions();
-    await loadPrompts();
-    await checkHealth();
+    // Skip initial API calls if SSR data is available
+    if (initFromSSR()) {
+        console.log('[SSR] Using server-rendered data, skipping initial API calls');
+        // Just update the UI with SSR data (HTML is already rendered)
+        updateHealthUI(state.healthStatus);
+        syncPlaygroundSessions();
+    } else {
+        // Fallback: fetch data from API
+        await loadSessions();
+        await loadPrompts();
+        await checkHealth();
+    }
 }
 
 // ========== Storage Functions ==========
