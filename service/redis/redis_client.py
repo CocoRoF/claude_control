@@ -165,7 +165,7 @@ class RedisClient:
             Success status
         """
         if not self._connection_available:
-            logger.warning("Redis not connected - skipping session save")
+            # Silent skip - caller should check is_connected before calling
             return False
 
         try:

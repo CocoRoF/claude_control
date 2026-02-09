@@ -328,9 +328,14 @@ class SessionManager:
     # ========== Helper Methods ==========
 
     def _save_session_to_redis(self, session_id: str, session_info: SessionInfo):
-        """Save session information to Redis."""
+        """Save session information to Redis (only if Redis is enabled)."""
+        # Skip silently if Redis is disabled
+        if not self._redis_enabled:
+            return
+
         if not self.redis or not self.redis.is_connected:
-            logger.warning(f"No Redis connection - session {session_id} stored locally only")
+            # Only log warning if Redis was supposed to be available but isn't
+            logger.warning(f"Redis enabled but not connected - session {session_id} stored locally only")
             return
 
         session_data = {

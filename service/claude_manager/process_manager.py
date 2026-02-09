@@ -931,6 +931,9 @@ Continue working on the task:
             current_prompt = prompt
             previous_hint = "Starting task"
 
+            # Get session logger for iteration logging
+            session_logger = get_session_logger(self.session_id, create_if_missing=False)
+
             while self._autonomous_iteration < effective_max_iterations:
                 # Check for stop request
                 if self._autonomous_stop_requested:
@@ -952,9 +955,14 @@ Continue working on the task:
                 )
 
                 output = result.get("output", "")
+                iteration_success = result.get("success", False)
+                iteration_duration = result.get("duration_ms", 0)
+                iteration_cost = result.get("cost_usd", 0.0)
+                iteration_tools = result.get("tool_calls", [])
+
                 all_outputs.append(output)
                 final_output = output
-                total_duration_ms += result.get("duration_ms", 0)
+                total_duration_ms += iteration_duration
 
                 # Call iteration callback if provided
                 if on_iteration_complete:
@@ -963,18 +971,52 @@ Continue working on the task:
                     except Exception as e:
                         logger.warning(f"[{self.session_id}] Callback error: {e}")
 
+                # Check for task completion first to set is_complete flag
+                iteration_is_complete = False
+                iteration_stop_reason = None
+
                 # Check for errors
-                if not result.get("success", False):
+                if not iteration_success:
                     error = result.get("error", "Unknown error")
                     logger.error(f"[{self.session_id}] ❌ Iteration #{self._autonomous_iteration} failed: {error}")
                     stop_reason = "error"
+                    iteration_stop_reason = "error"
+
+                    # Log iteration completion with error
+                    if session_logger:
+                        session_logger.log_iteration_complete(
+                            iteration=self._autonomous_iteration,
+                            success=False,
+                            output=output,
+                            error=error,
+                            duration_ms=iteration_duration,
+                            cost_usd=iteration_cost,
+                            tool_calls=iteration_tools,
+                            is_complete=False,
+                            stop_reason="error"
+                        )
                     break
 
                 # Check for task completion
                 if COMPLETE_PATTERN.search(output):
+                    iteration_is_complete = True
                     is_complete = True
                     stop_reason = "complete"
+                    iteration_stop_reason = "complete"
                     logger.info(f"[{self.session_id}] ✅ Task complete! (iteration #{self._autonomous_iteration})")
+
+                    # Log final iteration
+                    if session_logger:
+                        session_logger.log_iteration_complete(
+                            iteration=self._autonomous_iteration,
+                            success=True,
+                            output=output,
+                            duration_ms=iteration_duration,
+                            cost_usd=iteration_cost,
+                            tool_calls=iteration_tools,
+                            is_complete=True,
+                            stop_reason="complete"
+                        )
                     break
 
                 # Check for continue pattern
@@ -982,6 +1024,19 @@ Continue working on the task:
                 if continue_match:
                     previous_hint = continue_match.group(1).strip()
                     logger.info(f"[{self.session_id}] 🔄 Continue detected: {previous_hint}")
+
+                    # Log iteration completion (continuing)
+                    if session_logger:
+                        session_logger.log_iteration_complete(
+                            iteration=self._autonomous_iteration,
+                            success=True,
+                            output=output,
+                            duration_ms=iteration_duration,
+                            cost_usd=iteration_cost,
+                            tool_calls=iteration_tools,
+                            is_complete=False,
+                            stop_reason=f"continue: {previous_hint[:50]}"
+                        )
 
                     # Build reminder prompt for next iteration
                     current_prompt = reminder_template.format(
@@ -996,10 +1051,36 @@ Continue working on the task:
                         is_complete = True
                         stop_reason = "complete"
                         logger.info(f"[{self.session_id}] ✅ Task appears complete (no continue signal)")
+
+                        # Log final iteration
+                        if session_logger:
+                            session_logger.log_iteration_complete(
+                                iteration=self._autonomous_iteration,
+                                success=True,
+                                output=output,
+                                duration_ms=iteration_duration,
+                                cost_usd=iteration_cost,
+                                tool_calls=iteration_tools,
+                                is_complete=True,
+                                stop_reason="complete (inferred)"
+                            )
                         break
                     else:
                         # Continue with a generic reminder
                         previous_hint = "Continue from where you left off"
+
+                        # Log iteration completion (continuing)
+                        if session_logger:
+                            session_logger.log_iteration_complete(
+                                iteration=self._autonomous_iteration,
+                                success=True,
+                                output=output,
+                                duration_ms=iteration_duration,
+                                cost_usd=iteration_cost,
+                                tool_calls=iteration_tools,
+                                is_complete=False,
+                                stop_reason="continue (no pattern)"
+                            )
                         current_prompt = reminder_template.format(
                             original_request=self._original_request,
                             iteration=self._autonomous_iteration + 1,

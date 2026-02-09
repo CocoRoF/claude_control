@@ -29,6 +29,7 @@ class LogLevel(str, Enum):
     TOOL_RESULT = "TOOL_RES"    # Tool execution results
     STREAM_EVENT = "STREAM"     # Stream-json events
     MANAGER_EVENT = "MANAGER"   # Manager-specific events for hierarchical management
+    ITERATION = "ITER"          # Autonomous execution iteration complete
 
 
 class LogEntry:
@@ -264,6 +265,71 @@ class SessionLogger:
                     tool_input=tool_call.get("input"),
                     tool_id=tool_call.get("id")
                 )
+
+    def log_iteration_complete(
+        self,
+        iteration: int,
+        success: bool,
+        output: Optional[str] = None,
+        error: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        cost_usd: Optional[float] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        is_complete: bool = False,
+        stop_reason: Optional[str] = None
+    ):
+        """
+        Log completion of an autonomous execution iteration.
+
+        Args:
+            iteration: Iteration number (1-based)
+            success: Whether this iteration succeeded
+            output: Claude's output for this iteration
+            error: Error message if failed
+            duration_ms: Duration of this iteration
+            cost_usd: Cost of this iteration
+            tool_calls: Tool calls made during this iteration
+            is_complete: Whether the task is fully complete
+            stop_reason: Reason for stopping (if applicable)
+        """
+        output_length = len(output) if output else 0
+        is_truncated = output_length > 500
+        preview = output[:500] + "..." if output and is_truncated else output
+
+        # Build metadata
+        metadata = {
+            "type": "iteration_complete",
+            "iteration": iteration,
+            "success": success,
+            "duration_ms": duration_ms,
+            "cost_usd": cost_usd,
+            "output_length": output_length,
+            "is_truncated": is_truncated,
+            "tool_call_count": len(tool_calls) if tool_calls else 0,
+            "is_complete": is_complete,
+            "stop_reason": stop_reason,
+            "preview": preview if success else None,
+        }
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        # Build message
+        status = "✅" if success else "❌"
+        complete_marker = " [COMPLETE]" if is_complete else ""
+        cost_str = f", ${cost_usd:.4f}" if cost_usd else ""
+        duration_str = f" ({duration_ms}ms)" if duration_ms else ""
+        tool_str = f", {len(tool_calls)} tools" if tool_calls else ""
+
+        header = f"{status} Execution #{iteration}{complete_marker}{duration_str}{cost_str}{tool_str}"
+
+        if success and output:
+            # Include output preview in message
+            message = f"{header}\n{preview}"
+        elif error:
+            message = f"{header}\nError: {error}"
+        else:
+            message = header
+
+        self.log(LogLevel.ITERATION, message, metadata)
 
     def log_tool_use(
         self,

@@ -821,6 +821,9 @@ body {
 .log-entry .log-level.ERROR { background-color: rgba(239, 68, 68, 0.2); color: var(--danger-color); }
 .log-entry .log-level.COMMAND { background-color: rgba(16, 185, 129, 0.2); color: var(--success-color); }
 .log-entry .log-level.RESPONSE { background-color: rgba(168, 85, 247, 0.2); color: #a78bfa; }
+.log-entry .log-level.ITER { background-color: rgba(251, 146, 60, 0.2); color: #fb923c; }
+.log-entry .log-level.TOOL { background-color: rgba(34, 211, 238, 0.2); color: #22d3ee; }
+.log-entry .log-level.STREAM { background-color: rgba(148, 163, 184, 0.2); color: #94a3b8; }
 
 .log-entry .log-message {
     color: var(--text-primary);
