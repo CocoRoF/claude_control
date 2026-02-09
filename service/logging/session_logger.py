@@ -272,14 +272,17 @@ class SessionLogger:
         tool_id: Optional[str] = None
     ):
         """
-        Log a tool invocation event.
+        Log a tool invocation event with detailed context.
 
         Args:
             tool_name: Name of the tool being called
             tool_input: Input parameters to the tool
             tool_id: Unique ID for this tool use
         """
-        # Truncate tool input for log readability
+        # Format tool detail for readability
+        detail = self._format_tool_detail(tool_name, tool_input)
+
+        # Full input for metadata
         input_str = json.dumps(tool_input, ensure_ascii=False) if tool_input else "{}"
         is_truncated = len(input_str) > 500
         input_preview = input_str[:500] + "..." if is_truncated else input_str
@@ -288,14 +291,119 @@ class SessionLogger:
             "type": "tool_use",
             "tool_name": tool_name,
             "tool_id": tool_id,
+            "detail": detail,
             "input_preview": input_preview,
             "input_length": len(input_str),
             "is_truncated": is_truncated
         }
         metadata = {k: v for k, v in metadata.items() if v is not None}
 
-        message = f"TOOL: {tool_name}"
+        message = f"🔧 {tool_name}: {detail}"
         self.log(LogLevel.TOOL_USE, message, metadata)
+
+    def _format_tool_detail(self, tool_name: str, tool_input: Optional[Dict]) -> str:
+        """
+        Format tool input into a concise, informative detail string.
+
+        Args:
+            tool_name: Name of the tool
+            tool_input: Tool input dictionary
+
+        Returns:
+            Formatted detail string for display
+        """
+        if not tool_input:
+            return "(no input)"
+
+        try:
+            name_lower = tool_name.lower()
+
+            # Bash/shell commands
+            if name_lower in ("bash", "shell", "execute"):
+                command = tool_input.get("command", tool_input.get("cmd", ""))
+                if command:
+                    # Clean up and truncate
+                    command = command.strip().replace("\n", " ")
+                    if len(command) > 100:
+                        return f"`{command[:100]}...`"
+                    return f"`{command}`"
+
+            # Read file operations
+            elif name_lower in ("read", "readfile", "read_file", "view"):
+                file_path = tool_input.get("file_path", tool_input.get("path", tool_input.get("file", "")))
+                start_line = tool_input.get("start_line", tool_input.get("offset", ""))
+                end_line = tool_input.get("end_line", tool_input.get("limit", ""))
+                if file_path:
+                    # Get just filename for brevity
+                    filename = file_path.replace("\\", "/").split("/")[-1]
+                    if start_line and end_line:
+                        return f"{filename} (L{start_line}-{end_line})"
+                    elif start_line:
+                        return f"{filename} (from L{start_line})"
+                    return filename
+
+            # Write file operations
+            elif name_lower in ("write", "writefile", "write_file", "edit", "edit_file"):
+                file_path = tool_input.get("file_path", tool_input.get("path", tool_input.get("file", "")))
+                content = tool_input.get("content", tool_input.get("text", ""))
+                if file_path:
+                    filename = file_path.replace("\\", "/").split("/")[-1]
+                    if content:
+                        lines = content.count("\n") + 1
+                        chars = len(content)
+                        return f"{filename} (+{lines} lines, {chars} chars)"
+                    return filename
+
+            # Glob/search/list operations
+            elif name_lower in ("glob", "search", "find", "list", "ls", "listdir"):
+                pattern = tool_input.get("pattern", tool_input.get("query", tool_input.get("path", "")))
+                if pattern:
+                    if len(pattern) > 60:
+                        return f"`{pattern[:60]}...`"
+                    return f"`{pattern}`"
+
+            # Grep operations
+            elif name_lower in ("grep", "ripgrep", "rg"):
+                pattern = tool_input.get("pattern", tool_input.get("query", tool_input.get("regex", "")))
+                path = tool_input.get("path", tool_input.get("directory", ""))
+                if pattern:
+                    pat = f"`{pattern[:40]}`" if len(pattern) > 40 else f"`{pattern}`"
+                    if path:
+                        dir_name = path.replace("\\", "/").split("/")[-1]
+                        return f"{pat} in {dir_name}"
+                    return pat
+
+            # Web fetch
+            elif name_lower in ("fetch", "web", "http", "curl"):
+                url = tool_input.get("url", tool_input.get("uri", ""))
+                if url:
+                    if len(url) > 60:
+                        return f"{url[:60]}..."
+                    return url
+
+            # MCP tool calls (mcp__server__tool format)
+            elif tool_name.startswith("mcp__") or "__" in tool_name:
+                # Try to extract most relevant parameter
+                for key in ["query", "path", "file_path", "command", "url", "content", "message", "prompt"]:
+                    if key in tool_input:
+                        value = str(tool_input[key]).strip().replace("\n", " ")
+                        if len(value) > 80:
+                            return f"{key}=`{value[:80]}...`"
+                        return f"{key}=`{value}`"
+
+            # Default: show first meaningful parameter
+            for key, value in tool_input.items():
+                if key.startswith("_"):
+                    continue
+                value_str = str(value).strip().replace("\n", " ")
+                if len(value_str) > 80:
+                    return f"{key}=`{value_str[:80]}...`"
+                return f"{key}=`{value_str}`"
+
+            return "(empty input)"
+
+        except Exception as e:
+            return f"(parse error)"
 
     def log_tool_result(
         self,

@@ -441,10 +441,12 @@ class ClaudeProcess:
                     logger.info(f"[{self.session_id}] ✅ Execution #{self._execution_count} completed in {duration_ms}ms")
                     logger.info(f"[{self.session_id}] 🔧 Tool calls: {len(summary.tool_calls)}, Cost: ${summary.total_cost_usd:.6f}")
 
-                    # Log tool call details
+                    # Log tool call details with more context
                     for i, tool_call in enumerate(summary.tool_calls, 1):
                         tool_name = tool_call.get("name", "unknown")
-                        logger.info(f"[{self.session_id}]   [{i}] {tool_name}")
+                        tool_input = tool_call.get("input", {})
+                        detail = self._format_tool_detail(tool_name, tool_input)
+                        logger.info(f"[{self.session_id}]   [{i}] {tool_name}: {detail}")
 
                 # Save work log with tool details
                 await self._append_work_log(
@@ -561,6 +563,97 @@ class ClaudeProcess:
             "stdout_lines": stdout_lines,
             "stderr_lines": stderr_lines
         }
+
+    def _format_tool_detail(self, tool_name: str, tool_input: Dict) -> str:
+        """
+        Format tool input into a concise, informative detail string.
+
+        Args:
+            tool_name: Name of the tool (Bash, Read, Write, etc.)
+            tool_input: Tool input dictionary with parameters
+
+        Returns:
+            Formatted detail string
+        """
+        if not tool_input:
+            return "(no input)"
+
+        try:
+            # Bash/shell commands
+            if tool_name.lower() in ("bash", "shell", "execute"):
+                command = tool_input.get("command", tool_input.get("cmd", ""))
+                if command:
+                    # Truncate long commands
+                    if len(command) > 100:
+                        return f"`{command[:100]}...`"
+                    return f"`{command}`"
+
+            # Read file operations
+            elif tool_name.lower() in ("read", "readfile", "read_file", "view"):
+                file_path = tool_input.get("file_path", tool_input.get("path", tool_input.get("file", "")))
+                start_line = tool_input.get("start_line", tool_input.get("offset", ""))
+                end_line = tool_input.get("end_line", tool_input.get("limit", ""))
+                if file_path:
+                    # Get just filename for brevity
+                    filename = file_path.split("/")[-1].split("\\")[-1]
+                    if start_line and end_line:
+                        return f"{filename} (lines {start_line}-{end_line})"
+                    elif start_line:
+                        return f"{filename} (from line {start_line})"
+                    return filename
+
+            # Write file operations
+            elif tool_name.lower() in ("write", "writefile", "write_file", "edit", "edit_file"):
+                file_path = tool_input.get("file_path", tool_input.get("path", tool_input.get("file", "")))
+                content = tool_input.get("content", tool_input.get("text", ""))
+                if file_path:
+                    filename = file_path.split("/")[-1].split("\\")[-1]
+                    if content:
+                        lines = content.count("\n") + 1
+                        return f"{filename} ({lines} lines)"
+                    return filename
+
+            # Glob/search operations
+            elif tool_name.lower() in ("glob", "search", "find", "list", "ls"):
+                pattern = tool_input.get("pattern", tool_input.get("query", tool_input.get("path", "")))
+                if pattern:
+                    if len(pattern) > 60:
+                        return f"`{pattern[:60]}...`"
+                    return f"`{pattern}`"
+
+            # Grep operations
+            elif tool_name.lower() in ("grep", "ripgrep", "rg"):
+                pattern = tool_input.get("pattern", tool_input.get("query", tool_input.get("regex", "")))
+                path = tool_input.get("path", tool_input.get("directory", ""))
+                if pattern:
+                    result = f"`{pattern[:40]}`" if len(pattern) > 40 else f"`{pattern}`"
+                    if path:
+                        result += f" in {path.split('/')[-1].split(chr(92))[-1]}"
+                    return result
+
+            # MCP tool calls (mcp__server__tool format)
+            elif tool_name.startswith("mcp__") or "__" in tool_name:
+                # Try to extract most relevant parameter
+                for key in ["query", "path", "file_path", "command", "url", "content", "message"]:
+                    if key in tool_input:
+                        value = str(tool_input[key])
+                        if len(value) > 80:
+                            return f"{key}={value[:80]}..."
+                        return f"{key}={value}"
+
+            # Default: show first meaningful parameter
+            for key, value in tool_input.items():
+                if key.startswith("_"):
+                    continue
+                value_str = str(value)
+                if len(value_str) > 80:
+                    return f"{key}={value_str[:80]}..."
+                return f"{key}={value_str}"
+
+            return "(empty input)"
+
+        except Exception as e:
+            return f"(parse error: {e})"
 
     async def _append_work_log(
         self,
