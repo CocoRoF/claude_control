@@ -142,7 +142,7 @@ class CreateSessionRequest(BaseModel):
     )
     working_dir: Optional[str] = Field(
         default=None,
-        description="Working directory (auto-generated if not specified)"
+        description="Working directory (if None, uses {temp_dir}/{session_id} as storage/work directory)"
     )
     env_vars: Optional[Dict[str, str]] = Field(
         default=None,

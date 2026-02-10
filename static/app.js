@@ -105,7 +105,7 @@ async function apiCall(endpoint, options = {}) {
 
 async function loadSessions() {
     try {
-        state.sessions = await apiCall('/api/sessions');
+        state.sessions = await apiCall('/api/agents');
         renderSessionList();
         updateSessionStats();
         updateBatchSessionList();
@@ -361,7 +361,7 @@ async function createSession() {
             manager_id: managerId || undefined
         };
 
-        await apiCall('/api/sessions', {
+        await apiCall('/api/agents', {
             method: 'POST',
             body: JSON.stringify(payload)
         });
@@ -392,7 +392,7 @@ function onRoleSelect() {
 // Load managers for the selection dropdown
 async function loadManagersForSelect() {
     try {
-        const managers = await apiCall('/api/sessions/managers');
+        const managers = await apiCall('/api/agents/managers');
         const select = document.getElementById('new-session-manager');
 
         // Clear existing options except the first one
@@ -432,7 +432,7 @@ async function confirmDeleteSession() {
     if (!sessionToDelete) return;
 
     try {
-        await apiCall(`/api/sessions/${sessionToDelete}`, {
+        await apiCall(`/api/agents/${sessionToDelete}`, {
             method: 'DELETE'
         });
 
@@ -496,7 +496,7 @@ async function executeSingleInternal(prompt, skipPermissions) {
     notifyCharacterRequestStart(state.selectedSessionId);
 
     try {
-        const result = await apiCall(`/api/sessions/${state.selectedSessionId}/execute`, {
+        const result = await apiCall(`/api/agents/${state.selectedSessionId}/execute`, {
             method: 'POST',
             body: JSON.stringify({
                 prompt: prompt,
@@ -552,7 +552,7 @@ async function executeAutonomousInternal(prompt, skipPermissions) {
     notifyCharacterRequestStart(state.selectedSessionId);
 
     try {
-        const result = await apiCall(`/api/sessions/${state.selectedSessionId}/execute/autonomous`, {
+        const result = await apiCall(`/api/agents/${state.selectedSessionId}/execute/autonomous`, {
             method: 'POST',
             body: JSON.stringify({
                 prompt: prompt,
@@ -609,7 +609,7 @@ async function stopExecution() {
 
     if (session && session.autonomous && state.isAutoContinuing) {
         try {
-            await apiCall(`/api/sessions/${state.selectedSessionId}/execute/autonomous/stop`, {
+            await apiCall(`/api/agents/${state.selectedSessionId}/execute/autonomous/stop`, {
                 method: 'POST'
             });
             setExecutionStatus('warning', '🛑 Stop requested, waiting for current iteration...');
@@ -1113,7 +1113,7 @@ async function refreshStorage() {
     storageTree.innerHTML = '<p class="storage-placeholder">Loading...</p>';
 
     try {
-        const response = await fetch(`/api/sessions/${state.selectedSessionId}/storage`);
+        const response = await fetch(`/api/agents/${state.selectedSessionId}/storage`);
         if (!response.ok) {
             if (response.status === 404) {
                 showStoragePlaceholder('No storage found for this session');
@@ -1261,7 +1261,7 @@ async function loadStorageFile(filePath) {
     try {
         // Remove leading slash if present
         const cleanPath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
-        const response = await fetch(`/api/sessions/${state.selectedSessionId}/storage/${encodeURIComponent(cleanPath)}`);
+        const response = await fetch(`/api/agents/${state.selectedSessionId}/storage/${encodeURIComponent(cleanPath)}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
@@ -1293,7 +1293,7 @@ async function refreshManagerDashboard() {
     }
 
     try {
-        const dashboard = await apiCall(`/api/sessions/${state.selectedSessionId}/dashboard`);
+        const dashboard = await apiCall(`/api/agents/${state.selectedSessionId}/dashboard`);
         renderManagerDashboard(dashboard);
     } catch (error) {
         console.error('Failed to load manager dashboard:', error);

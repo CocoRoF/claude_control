@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
@@ -32,6 +33,7 @@ from service.claude_manager.storage_utils import (
     read_storage_file as _read_storage_file,
 )
 from service.utils.utils import now_kst
+from service.logging.session_logger import get_session_logger
 
 logger = logging.getLogger(__name__)
 
@@ -653,6 +655,10 @@ This file contains a log of all work performed by this session.
                 - stop_reason: 'complete', 'max_iterations', 'error', 'user_stop'
                 - total_duration_ms: Total execution time
         """
+        # 그래프 로깅 초기화
+        session_logger = get_session_logger(self.session_id, create_if_missing=True)
+        start_time = time.time()
+
         # Patterns for detecting continuation and completion
         CONTINUE_PATTERN = re.compile(r'\[CONTINUE:\s*(.+?)\]', re.IGNORECASE)
         COMPLETE_PATTERN = re.compile(r'\[TASK_COMPLETE\]', re.IGNORECASE)
@@ -672,6 +678,15 @@ This file contains a log of all work performed by this session.
 
         logger.info(f"[{self.session_id}] 🚀 Starting autonomous execution (max {effective_max_iterations} iterations)")
         logger.info(f"[{self.session_id}] 📝 Original request: {prompt[:200]}{'...' if len(prompt) > 200 else ''}")
+
+        # 그래프 실행 시작 로깅
+        if session_logger:
+            session_logger.log_graph_execution_start(
+                input_text=prompt,
+                thread_id=self.session_id,
+                max_iterations=effective_max_iterations,
+                execution_mode="autonomous",
+            )
 
         try:
             # Build reminder prefix for subsequent iterations
@@ -702,10 +717,30 @@ Continue working on the task:
                 if self._autonomous_stop_requested:
                     stop_reason = "user_stop"
                     logger.info(f"[{self.session_id}] 🛑 Autonomous execution stopped by user")
+
+                    # 사용자 중지 로깅
+                    if session_logger:
+                        session_logger.log_graph_edge_decision(
+                            from_node="iteration",
+                            decision="END",
+                            reason="user_stop_requested",
+                        )
                     break
 
                 self._autonomous_iteration += 1
+                iteration_start_time = time.time()
                 logger.info(f"[{self.session_id}] 🔄 Autonomous iteration #{self._autonomous_iteration}")
+
+                # 노드 진입 로깅
+                if session_logger:
+                    session_logger.log_graph_node_enter(
+                        node_name=f"iteration_{self._autonomous_iteration}",
+                        iteration=self._autonomous_iteration,
+                        state_summary={
+                            "prompt_preview": current_prompt[:100] if current_prompt else "",
+                            "previous_hint": previous_hint,
+                        },
+                    )
 
                 # Execute single iteration
                 result = await self.execute(
@@ -720,7 +755,21 @@ Continue working on the task:
                 output = result.get("output", "")
                 all_outputs.append(output)
                 final_output = output
+                iteration_duration_ms = int((time.time() - iteration_start_time) * 1000)
                 total_duration_ms += result.get("duration_ms", 0)
+
+                # 노드 종료 로깅
+                if session_logger:
+                    session_logger.log_graph_node_exit(
+                        node_name=f"iteration_{self._autonomous_iteration}",
+                        iteration=self._autonomous_iteration,
+                        output_preview=output[:200] if output else "",
+                        duration_ms=iteration_duration_ms,
+                        state_changes={
+                            "success": result.get("success", False),
+                            "cost_usd": result.get("cost_usd"),
+                        },
+                    )
 
                 # Call iteration callback if provided
                 if on_iteration_complete:
@@ -734,6 +783,14 @@ Continue working on the task:
                     error = result.get("error", "Unknown error")
                     logger.error(f"[{self.session_id}] ❌ Iteration #{self._autonomous_iteration} failed: {error}")
                     stop_reason = "error"
+
+                    # 에러 로깅
+                    if session_logger:
+                        session_logger.log_graph_error(
+                            error_message=error,
+                            error_type="iteration_error",
+                            node_name=f"iteration_{self._autonomous_iteration}",
+                        )
                     break
 
                 # Check for task completion
@@ -741,6 +798,14 @@ Continue working on the task:
                     is_complete = True
                     stop_reason = "complete"
                     logger.info(f"[{self.session_id}] ✅ Task complete! (iteration #{self._autonomous_iteration})")
+
+                    # 완료 결정 로깅
+                    if session_logger:
+                        session_logger.log_graph_edge_decision(
+                            from_node=f"iteration_{self._autonomous_iteration}",
+                            decision="END",
+                            reason="TASK_COMPLETE pattern detected",
+                        )
                     break
 
                 # Check for continue pattern
@@ -748,6 +813,14 @@ Continue working on the task:
                 if continue_match:
                     previous_hint = continue_match.group(1).strip()
                     logger.info(f"[{self.session_id}] 🔄 Continue detected: {previous_hint}")
+
+                    # 계속 결정 로깅
+                    if session_logger:
+                        session_logger.log_graph_edge_decision(
+                            from_node=f"iteration_{self._autonomous_iteration}",
+                            decision=f"iteration_{self._autonomous_iteration + 1}",
+                            reason=f"CONTINUE pattern: {previous_hint}",
+                        )
 
                     # Build reminder prompt for next iteration
                     current_prompt = reminder_template.format(
@@ -783,6 +856,15 @@ Continue working on the task:
             stop_reason = "error"
             final_output = str(e)
 
+            # 예외 로깅
+            if session_logger:
+                session_logger.log_graph_error(
+                    error_message=str(e),
+                    error_type=type(e).__name__,
+                    node_name="autonomous_execute",
+                    iteration=self._autonomous_iteration,
+                )
+
         finally:
             self._autonomous_running = False
 
@@ -797,6 +879,17 @@ Continue working on the task:
             "stop_reason": stop_reason,
             "total_duration_ms": total_duration_ms
         }
+
+        # 그래프 실행 완료 로깅
+        total_execution_time_ms = int((time.time() - start_time) * 1000)
+        if session_logger:
+            session_logger.log_graph_execution_complete(
+                success=result["success"],
+                total_iterations=self._autonomous_iteration,
+                final_output=final_output[:500] if final_output else None,
+                total_duration_ms=total_execution_time_ms,
+                stop_reason=stop_reason,
+            )
 
         logger.info(f"[{self.session_id}] 🏁 Autonomous execution finished: {stop_reason} after {self._autonomous_iteration} iterations")
         return result

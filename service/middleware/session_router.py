@@ -26,18 +26,22 @@ def is_redis_enabled() -> bool:
 
 # URL patterns to extract session ID from
 SESSION_URL_PATTERNS = [
-    # /api/sessions/{session_id}
+    # /api/sessions/{session_id} (legacy)
     re.compile(r'^/api/sessions/([a-f0-9-]{36})(?:/.*)?$'),
+    # /api/agents/{session_id} (new)
+    re.compile(r'^/api/agents/([a-f0-9-]{36})(?:/.*)?$'),
 ]
 
 # Routes that require session routing
 SESSION_ROUTES = [
-    '/api/sessions/',  # GET, DELETE /api/sessions/{session_id}
+    '/api/sessions/',  # GET, DELETE /api/sessions/{session_id} (legacy)
+    '/api/agents/',  # GET, DELETE /api/agents/{session_id} (new)
 ]
 
 # Routes excluded from session routing
 EXCLUDED_ROUTES = [
     '/api/sessions',  # List view (including POST for session creation)
+    '/api/agents',  # List view (including POST for agent creation)
     '/health',
     '/redis/stats',
     '/',

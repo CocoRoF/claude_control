@@ -9,8 +9,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
-from controller.claude_controller import router as claude_router, session_manager
+from controller.claude_controller import router as claude_router
 from controller.command_controller import router as command_router
+from controller.agent_controller import router as agent_router, agent_manager
 from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import init_pod_info, get_pod_info
 from service.middleware.session_router import SessionRoutingMiddleware
@@ -134,8 +135,8 @@ async def lifespan(app: FastAPI):
         print_step_banner("REDIS", "REDIS DISABLED", "Running in local memory mode")
     redis_client = init_redis_client(app)
 
-    # Inject Redis client into SessionManager
-    session_manager.set_redis_client(redis_client)
+    # Inject Redis client into AgentSessionManager
+    agent_manager.set_redis_client(redis_client)
 
     # Auto-load MCP configs and tools
     print_step_banner("MCP", "MCP LOADER", "Loading MCP configs and tools...")
@@ -144,8 +145,8 @@ async def lifespan(app: FastAPI):
     app.state.mcp_loader = mcp_loader
     app.state.global_mcp_config = mcp_config
 
-    # Inject global MCP config into SessionManager
-    session_manager.set_global_mcp_config(mcp_config)
+    # Inject global MCP config into AgentSessionManager
+    agent_manager.set_global_mcp_config(mcp_config)
     logger.info(f"   - MCP Servers: {mcp_loader.get_server_count()}")
     logger.info(f"   - Custom Tools: {mcp_loader.get_tool_count()}")
 
@@ -167,10 +168,10 @@ async def lifespan(app: FastAPI):
 
     # Cleanup all sessions (10 second total timeout)
     async def cleanup_all_sessions():
-        sessions = session_manager.list_sessions()
+        sessions = agent_manager.list_sessions()
         # Cleanup sessions in parallel
         cleanup_tasks = [
-            session_manager.delete_session(session.session_id)
+            agent_manager.delete_session(session.session_id)
             for session in sessions
         ]
         if cleanup_tasks:
@@ -214,7 +215,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Detailed health check"""
-    sessions = session_manager.list_sessions()
+    sessions = agent_manager.list_sessions()
     pod_info = get_pod_info()
 
     # Check Redis status (get from app.state)
@@ -224,7 +225,7 @@ async def health_check():
         redis_status = "connected" if redis_client.health_check() else "error"
 
     # Number of sessions running on current pod
-    local_sessions = len(session_manager.sessions)
+    local_sessions = len(agent_manager.sessions)
 
     return {
         "status": "healthy",
@@ -250,6 +251,7 @@ async def redis_stats():
 # Register routers
 app.include_router(claude_router)
 app.include_router(command_router)
+app.include_router(agent_router)  # LangGraph agent sessions
 
 # Mount static files for Web UI Dashboard
 static_dir = Path(__file__).parent / "static"

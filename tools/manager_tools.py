@@ -72,7 +72,7 @@ def list_workers() -> str:
 
     try:
         with httpx.Client(timeout=30.0) as client:
-            response = client.get(f"{CLAUDE_CONTROL_URL}/api/sessions/{manager_id}/workers")
+            response = client.get(f"{CLAUDE_CONTROL_URL}/api/agents/{manager_id}/workers")
             response.raise_for_status()
             workers = response.json()
 
@@ -124,7 +124,7 @@ def delegate_task(worker_name: str, task: str) -> str:
     try:
         with httpx.Client(timeout=300.0) as client:  # Long timeout for task execution
             # First, find the worker by name
-            workers_response = client.get(f"{CLAUDE_CONTROL_URL}/api/sessions/{manager_id}/workers")
+            workers_response = client.get(f"{CLAUDE_CONTROL_URL}/api/agents/{manager_id}/workers")
             workers_response.raise_for_status()
             workers = workers_response.json()
 
@@ -151,7 +151,7 @@ def delegate_task(worker_name: str, task: str) -> str:
 
             # Delegate the task
             delegate_response = client.post(
-                f"{CLAUDE_CONTROL_URL}/api/sessions/{manager_id}/delegate",
+                f"{CLAUDE_CONTROL_URL}/api/agents/{manager_id}/delegate",
                 json={
                     "worker_id": worker_id,
                     "prompt": task
@@ -203,7 +203,7 @@ def get_worker_status(worker_name: str) -> str:
 
     try:
         with httpx.Client(timeout=30.0) as client:
-            workers_response = client.get(f"{CLAUDE_CONTROL_URL}/api/sessions/{manager_id}/workers")
+            workers_response = client.get(f"{CLAUDE_CONTROL_URL}/api/agents/{manager_id}/workers")
             workers_response.raise_for_status()
             workers = workers_response.json()
 
@@ -253,7 +253,7 @@ def broadcast_task(task: str) -> str:
     try:
         with httpx.Client(timeout=300.0) as client:
             # Get all workers
-            workers_response = client.get(f"{CLAUDE_CONTROL_URL}/api/sessions/{manager_id}/workers")
+            workers_response = client.get(f"{CLAUDE_CONTROL_URL}/api/agents/{manager_id}/workers")
             workers_response.raise_for_status()
             workers = workers_response.json()
 
@@ -277,7 +277,7 @@ def broadcast_task(task: str) -> str:
 
                 try:
                     delegate_response = client.post(
-                        f"{CLAUDE_CONTROL_URL}/api/sessions/{manager_id}/delegate",
+                        f"{CLAUDE_CONTROL_URL}/api/agents/{manager_id}/delegate",
                         json={
                             "worker_id": worker_id,
                             "prompt": task

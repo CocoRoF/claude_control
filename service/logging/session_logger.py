@@ -27,6 +27,7 @@ class LogLevel(str, Enum):
     COMMAND = "COMMAND"
     RESPONSE = "RESPONSE"
     MANAGER_EVENT = "MANAGER"  # Manager-specific events for hierarchical management
+    GRAPH = "GRAPH"  # LangGraph state transitions and node executions
 
 
 class LogEntry:
@@ -403,6 +404,216 @@ class SessionLogger:
             List of manager event entries
         """
         return self.get_logs(limit=limit, level=LogLevel.MANAGER_EVENT)
+
+    # ========== LangGraph Event Logging ==========
+
+    def log_graph_event(
+        self,
+        event_type: str,
+        message: str,
+        node_name: Optional[str] = None,
+        state_snapshot: Optional[Dict[str, Any]] = None,
+        data: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Log a LangGraph execution event.
+
+        Args:
+            event_type: Type of graph event (e.g., execution_start, node_enter, state_update)
+            message: Human-readable event description
+            node_name: Current node name (if applicable)
+            state_snapshot: Snapshot of current AgentState (if applicable)
+            data: Additional event data
+
+        Returns:
+            Event ID for tracking
+        """
+        import uuid
+        event_id = str(uuid.uuid4())[:8]
+
+        metadata = {
+            "event_id": event_id,
+            "event_type": event_type,
+            "node_name": node_name,
+            "state_snapshot": state_snapshot,
+            "data": data
+        }
+        # Remove None values
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        self.log(LogLevel.GRAPH, message, metadata)
+        return event_id
+
+    def log_graph_execution_start(
+        self,
+        input_text: str,
+        thread_id: Optional[str] = None,
+        max_iterations: Optional[int] = None,
+        execution_mode: str = "invoke"
+    ) -> str:
+        """Log when graph execution starts."""
+        input_preview = input_text[:100] + "..." if len(input_text) > 100 else input_text
+        message = f"GRAPH START [{execution_mode.upper()}]: {input_preview}"
+        return self.log_graph_event(
+            event_type="execution_start",
+            message=message,
+            data={
+                "input_preview": input_preview,
+                "input_length": len(input_text),
+                "thread_id": thread_id,
+                "max_iterations": max_iterations,
+                "execution_mode": execution_mode
+            }
+        )
+
+    def log_graph_node_enter(
+        self,
+        node_name: str,
+        iteration: int = 0,
+        state_summary: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Log when entering a graph node."""
+        message = f"NODE ENTER: {node_name} (iteration {iteration})"
+        return self.log_graph_event(
+            event_type="node_enter",
+            message=message,
+            node_name=node_name,
+            state_snapshot=state_summary,
+            data={"iteration": iteration}
+        )
+
+    def log_graph_node_exit(
+        self,
+        node_name: str,
+        iteration: int = 0,
+        output_preview: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        state_changes: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Log when exiting a graph node."""
+        message = f"NODE EXIT: {node_name} (iteration {iteration})"
+        if duration_ms:
+            message += f" [{duration_ms}ms]"
+        return self.log_graph_event(
+            event_type="node_exit",
+            message=message,
+            node_name=node_name,
+            data={
+                "iteration": iteration,
+                "output_preview": output_preview[:200] if output_preview and len(output_preview) > 200 else output_preview,
+                "output_length": len(output_preview) if output_preview else 0,
+                "duration_ms": duration_ms,
+                "state_changes": state_changes
+            }
+        )
+
+    def log_graph_state_update(
+        self,
+        update_type: str,
+        changes: Dict[str, Any],
+        iteration: int = 0
+    ) -> str:
+        """Log when graph state is updated."""
+        message = f"STATE UPDATE: {update_type} (iteration {iteration})"
+        return self.log_graph_event(
+            event_type="state_update",
+            message=message,
+            data={
+                "update_type": update_type,
+                "iteration": iteration,
+                "changes": changes
+            }
+        )
+
+    def log_graph_edge_decision(
+        self,
+        from_node: str,
+        decision: str,
+        reason: Optional[str] = None,
+        iteration: int = 0
+    ) -> str:
+        """Log conditional edge decision."""
+        message = f"EDGE DECISION: {from_node} -> {decision}"
+        if reason:
+            message += f" ({reason})"
+        return self.log_graph_event(
+            event_type="edge_decision",
+            message=message,
+            node_name=from_node,
+            data={
+                "from_node": from_node,
+                "decision": decision,
+                "reason": reason,
+                "iteration": iteration
+            }
+        )
+
+    def log_graph_execution_complete(
+        self,
+        success: bool,
+        total_iterations: int,
+        final_output: Optional[str] = None,
+        total_duration_ms: Optional[int] = None,
+        stop_reason: Optional[str] = None
+    ) -> str:
+        """Log when graph execution completes."""
+        status = "SUCCESS" if success else "FAILED"
+        message = f"GRAPH COMPLETE [{status}]: {total_iterations} iterations"
+        if stop_reason:
+            message += f" ({stop_reason})"
+
+        output_preview = None
+        if final_output:
+            output_preview = final_output[:200] + "..." if len(final_output) > 200 else final_output
+
+        return self.log_graph_event(
+            event_type="execution_complete",
+            message=message,
+            data={
+                "success": success,
+                "total_iterations": total_iterations,
+                "final_output_preview": output_preview,
+                "final_output_length": len(final_output) if final_output else 0,
+                "total_duration_ms": total_duration_ms,
+                "stop_reason": stop_reason
+            }
+        )
+
+    def log_graph_error(
+        self,
+        error_message: str,
+        node_name: Optional[str] = None,
+        iteration: int = 0,
+        error_type: Optional[str] = None
+    ) -> str:
+        """Log graph execution error."""
+        message = f"GRAPH ERROR"
+        if node_name:
+            message += f" in {node_name}"
+        message += f": {error_message}"
+
+        return self.log_graph_event(
+            event_type="error",
+            message=message,
+            node_name=node_name,
+            data={
+                "error_message": error_message,
+                "error_type": error_type,
+                "iteration": iteration
+            }
+        )
+
+    def get_graph_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Get LangGraph event log entries.
+
+        Args:
+            limit: Maximum number of entries to return
+
+        Returns:
+            List of graph event entries
+        """
+        return self.get_logs(limit=limit, level=LogLevel.GRAPH)
 
     def get_logs(
         self,
