@@ -25,12 +25,11 @@ class LogLevel(str, Enum):
     ERROR = "ERROR"
     COMMAND = "COMMAND"
     RESPONSE = "RESPONSE"
-    MANAGER_EVENT = "MANAGER"  # Manager-specific events for hierarchical management
-    GRAPH = "GRAPH"  # LangGraph state transitions and node executions
+    MANAGER_EVENT = "MANAGER"   # Manager-specific events for hierarchical management
+    GRAPH = "GRAPH"             # LangGraph state transitions and node executions
     TOOL_USE = "TOOL"           # Tool invocation events
     TOOL_RESULT = "TOOL_RES"    # Tool execution results
     STREAM_EVENT = "STREAM"     # Stream-json events
-    MANAGER_EVENT = "MANAGER"   # Manager-specific events for hierarchical management
     ITERATION = "ITER"          # Autonomous execution iteration complete
 
 

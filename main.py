@@ -8,9 +8,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from controller.claude_controller import router as claude_router
-from controller.command_controller import router as command_router
+from controller.command_controller import router as command_router, get_prompts_list
 from controller.agent_controller import router as agent_router, agent_manager
 from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import init_pod_info, get_pod_info
@@ -270,7 +271,7 @@ if templates_dir.exists():
 async def dashboard(request: Request):
     """Serve the Web UI Dashboard with server-side rendered initial data"""
     # Get initial data for SSR
-    sessions = session_manager.list_sessions()
+    sessions = agent_manager.list_sessions()
     sessions_data = [s.model_dump() for s in sessions]
 
     # Get prompts list

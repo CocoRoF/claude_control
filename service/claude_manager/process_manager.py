@@ -1005,7 +1005,7 @@ Continue working on the task:
                         node_name=f"iteration_{self._autonomous_iteration}",
                         iteration=self._autonomous_iteration,
                         output_preview=output[:200] if output else "",
-                        duration_ms=iteration_duration_ms,
+                        duration_ms=iteration_duration,
                         state_changes={
                             "success": result.get("success", False),
                             "cost_usd": result.get("cost_usd"),
