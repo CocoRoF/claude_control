@@ -54,6 +54,18 @@
         };
         console.log('[Three.js] SkeletonUtils polyfill loaded');
     </script>
+
+    <!-- Server-side rendered initial state -->
+    <script>
+        // Pre-rendered data from server (SSR)
+        window.__INITIAL_STATE__ = {
+            sessions: {{ initial_sessions | tojson | safe }},
+            prompts: {{ initial_prompts | tojson | safe }},
+            health: {{ initial_health | tojson | safe }},
+            stats: {{ initial_stats | tojson | safe }}
+        };
+        console.log('[SSR] Initial state loaded:', window.__INITIAL_STATE__);
+    </script>
 </head>
 <body>
     <div class="app-container">
@@ -63,9 +75,9 @@
                 <h1 class="logo">Claude Control</h1>
             </div>
             <div class="header-right">
-                <div class="health-indicator" id="health-indicator">
+                <div class="health-indicator {{ 'healthy' if initial_health.status == 'healthy' else 'error' }}" id="health-indicator">
                     <span class="health-dot"></span>
-                    <span class="health-text">Connecting...</span>
+                    <span class="health-text">{{ initial_health.status | capitalize if initial_health.status else 'Connecting...' }}</span>
                 </div>
             </div>
         </header>
@@ -87,20 +99,44 @@
                 </div>
                 <div class="session-stats" id="session-stats">
                     <div class="stat-item">
-                        <span class="stat-value" id="stat-total">0</span>
+                        <span class="stat-value" id="stat-total">{{ initial_stats.total }}</span>
                         <span class="stat-label">Total</span>
                     </div>
                     <div class="stat-item running">
-                        <span class="stat-value" id="stat-running">0</span>
+                        <span class="stat-value" id="stat-running">{{ initial_stats.running }}</span>
                         <span class="stat-label">Running</span>
                     </div>
                     <div class="stat-item error">
-                        <span class="stat-value" id="stat-error">0</span>
+                        <span class="stat-value" id="stat-error">{{ initial_stats.error }}</span>
                         <span class="stat-label">Error</span>
                     </div>
                 </div>
                 <div class="session-list" id="session-list">
-                    <div class="loading">Loading sessions...</div>
+                    {% if initial_sessions %}
+                        {% for session in initial_sessions %}
+                        <div class="session-item" onclick="selectSession('{{ session.session_id }}')">
+                            <span class="session-status-dot {{ session.status }}"></span>
+                            <div class="session-info">
+                                <div class="session-name">
+                                    <span class="role-badge {{ 'role-manager' if session.role == 'manager' else 'role-worker' }}">
+                                        {{ 'M' if session.role == 'manager' else 'W' }}
+                                    </span>
+                                    {{ session.session_name or 'Unnamed' }}
+                                </div>
+                                <div class="session-id">{{ session.session_id[:8] }}...</div>
+                            </div>
+                            <div class="session-actions">
+                                <button class="btn btn-icon btn-sm" onclick="event.stopPropagation(); showDeleteConfirmation('{{ session.session_id }}', '{{ session.session_name or session.session_id }}')" title="Delete">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            <p>No sessions yet</p>
+                        </div>
+                    {% endif %}
                 </div>
             </aside>
 
@@ -127,7 +163,7 @@
                                         <span class="playground-title-icon">🏙️</span>
                                         City Playground
                                     </div>
-                                    <span class="playground-session-count" id="playground-session-count">0 citizens</span>
+                                    <span class="playground-session-count" id="playground-session-count">{{ initial_stats.total }} citizens</span>
                                 </div>
                                 <div class="playground-toolbar-right">
                                     <button class="playground-btn" onclick="playgroundZoomIn()" title="Zoom In">
@@ -291,7 +327,17 @@
                             <div class="batch-sessions">
                                 <label>Select Sessions:</label>
                                 <div class="batch-session-list" id="batch-session-list">
-                                    <!-- Session checkboxes will be rendered here -->
+                                    {% for session in initial_sessions %}
+                                    <label class="batch-session-item">
+                                        <input type="checkbox" value="{{ session.session_id }}" class="batch-session-checkbox">
+                                        <span class="role-badge {{ 'role-manager' if session.role == 'manager' else 'role-worker' }}">
+                                            {{ 'M' if session.role == 'manager' else 'W' }}
+                                        </span>
+                                        {{ session.session_name or session.session_id[:8] }}
+                                    </label>
+                                    {% else %}
+                                    <p class="text-muted">No sessions available</p>
+                                    {% endfor %}
                                 </div>
                                 <div class="batch-select-actions">
                                     <button class="btn btn-sm" onclick="selectAllSessions()">Select All</button>
@@ -371,7 +417,9 @@
                         <label for="new-session-manager">Manager Session</label>
                         <select id="new-session-manager">
                             <option value="">None (Standalone)</option>
-                            <!-- Managers will be loaded dynamically -->
+                            {% for session in initial_sessions if session.role == 'manager' %}
+                            <option value="{{ session.session_id }}">{{ session.session_name or session.session_id[:8] }}</option>
+                            {% endfor %}
                         </select>
                         <small class="form-hint">Select a manager to control this worker</small>
                     </div>
@@ -379,7 +427,9 @@
                         <label for="new-session-prompt">System Prompt</label>
                         <select id="new-session-prompt" onchange="onPromptSelect()">
                             <option value="">None</option>
-                            <!-- Prompts will be loaded dynamically -->
+                            {% for prompt in initial_prompts %}
+                            <option value="{{ prompt.name }}" {{ 'selected' if prompt.name == 'self-manager' else '' }}>{{ prompt.description or prompt.name }}</option>
+                            {% endfor %}
                             <option value="custom">Custom...</option>
                         </select>
                     </div>

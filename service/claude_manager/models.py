@@ -286,6 +286,14 @@ class ExecuteRequest(BaseModel):
     )
 
 
+class ToolCallInfo(BaseModel):
+    """Information about a single tool call."""
+    id: Optional[str] = Field(default=None, description="Unique tool call ID")
+    name: str = Field(description="Tool name")
+    input: Optional[Dict[str, Any]] = Field(default=None, description="Tool input parameters")
+    timestamp: Optional[str] = Field(default=None, description="When the tool was called")
+
+
 class ExecuteResponse(BaseModel):
     """Claude execution response."""
     success: bool
@@ -299,6 +307,23 @@ class ExecuteResponse(BaseModel):
     duration_ms: Optional[int] = Field(
         default=None,
         description="Execution time (milliseconds)"
+    )
+    # Tool usage tracking
+    tool_calls: Optional[List[ToolCallInfo]] = Field(
+        default=None,
+        description="List of tools called during execution"
+    )
+    num_turns: Optional[int] = Field(
+        default=None,
+        description="Number of conversation turns"
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="Model used for execution"
+    )
+    stop_reason: Optional[str] = Field(
+        default=None,
+        description="Reason for stopping (end_turn, max_tokens, tool_use, etc.)"
     )
     # Auto-continue fields for self-manager mode
     should_continue: bool = Field(

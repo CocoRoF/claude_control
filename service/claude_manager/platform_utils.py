@@ -75,6 +75,10 @@ class WindowsProcessWrapper:
 
     def __init__(self, popen: sp.Popen):
         self._popen = popen
+        # Wrap stdin/stdout/stderr with async-compatible wrappers
+        self._stdin_wrapper = AsyncStreamWriter(popen.stdin) if popen.stdin else None
+        self._stdout_wrapper = AsyncStreamReader(popen.stdout) if popen.stdout else None
+        self._stderr_wrapper = AsyncStreamReader(popen.stderr) if popen.stderr else None
 
     @property
     def pid(self) -> int:
@@ -83,6 +87,21 @@ class WindowsProcessWrapper:
     @property
     def returncode(self) -> Optional[int]:
         return self._popen.returncode
+
+    @property
+    def stdin(self):
+        """Async-compatible stdin wrapper."""
+        return self._stdin_wrapper
+
+    @property
+    def stdout(self):
+        """Async-compatible stdout wrapper."""
+        return self._stdout_wrapper
+
+    @property
+    def stderr(self):
+        """Async-compatible stderr wrapper."""
+        return self._stderr_wrapper
 
     async def communicate(self, input: Optional[bytes] = None) -> Tuple[bytes, bytes]:
         """Async wrapper around Popen.communicate()"""
@@ -109,6 +128,52 @@ class WindowsProcessWrapper:
     def send_signal(self, sig):
         """Send a signal to the process"""
         self._popen.send_signal(sig)
+
+
+class AsyncStreamWriter:
+    """Async wrapper for synchronous file-like write objects (e.g., Popen.stdin)."""
+
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, data: bytes):
+        """Write data to stream (synchronous, but matches asyncio interface)."""
+        return self._stream.write(data)
+
+    async def drain(self):
+        """Flush the stream (async-compatible)."""
+        await asyncio.to_thread(self._stream.flush)
+
+    def close(self):
+        """Close the stream."""
+        self._stream.close()
+
+    async def wait_closed(self):
+        """Wait for stream to close (no-op for sync streams)."""
+        pass
+
+
+class AsyncStreamReader:
+    """Async wrapper for synchronous file-like read objects (e.g., Popen.stdout)."""
+
+    def __init__(self, stream):
+        self._stream = stream
+
+    async def readline(self) -> bytes:
+        """Read a line asynchronously."""
+        def _readline():
+            return self._stream.readline()
+        return await asyncio.to_thread(_readline)
+
+    async def read(self, n: int = -1) -> bytes:
+        """Read n bytes asynchronously."""
+        def _read():
+            return self._stream.read(n)
+        return await asyncio.to_thread(_read)
+
+    def close(self):
+        """Close the stream."""
+        self._stream.close()
 
 
 async def create_subprocess_cross_platform(

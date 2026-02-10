@@ -18,8 +18,42 @@ const state = {
     isAutoContinuing: false,
     autoContinueCount: 0,
     autoContinueRetries: 0,
-    maxRetries: 3
+    maxRetries: 3,
+    // SSR initial state loaded flag
+    ssrInitialized: false,
+    // Logs auto-refresh state
+    logsAutoRefreshInterval: null,
+    logsAutoRefreshEnabled: true
 };
+
+// Initialize from SSR data if available
+function initFromSSR() {
+    if (window.__INITIAL_STATE__ && !state.ssrInitialized) {
+        const ssr = window.__INITIAL_STATE__;
+        console.log('[SSR] Initializing from server-rendered state');
+
+        // Load sessions from SSR
+        if (ssr.sessions && Array.isArray(ssr.sessions)) {
+            state.sessions = ssr.sessions;
+            console.log(`[SSR] Loaded ${state.sessions.length} sessions`);
+        }
+
+        // Load prompts from SSR
+        if (ssr.prompts && Array.isArray(ssr.prompts)) {
+            state.prompts = ssr.prompts;
+            console.log(`[SSR] Loaded ${state.prompts.length} prompts`);
+        }
+
+        // Load health status from SSR
+        if (ssr.health) {
+            state.healthStatus = ssr.health.status === 'healthy' ? 'healthy' : 'error';
+        }
+
+        state.ssrInitialized = true;
+        return true;
+    }
+    return false;
+}
 
 // Get or initialize session data
 function getSessionData(sessionId) {
@@ -654,6 +688,38 @@ function clearOutput() {
 
 // ========== Logs ==========
 
+// Start auto-refresh for logs (5 second interval)
+function startLogsAutoRefresh() {
+    if (state.logsAutoRefreshInterval) {
+        clearInterval(state.logsAutoRefreshInterval);
+    }
+    state.logsAutoRefreshInterval = setInterval(() => {
+        if (state.selectedSessionId && state.logsAutoRefreshEnabled) {
+            loadSessionLogs();
+        }
+    }, 5000);
+}
+
+// Stop auto-refresh for logs
+function stopLogsAutoRefresh() {
+    if (state.logsAutoRefreshInterval) {
+        clearInterval(state.logsAutoRefreshInterval);
+        state.logsAutoRefreshInterval = null;
+    }
+}
+
+// Toggle auto-refresh for logs
+function toggleLogsAutoRefresh() {
+    const checkbox = document.getElementById('logs-auto-refresh');
+    state.logsAutoRefreshEnabled = checkbox.checked;
+
+    if (state.logsAutoRefreshEnabled) {
+        startLogsAutoRefresh();
+    } else {
+        stopLogsAutoRefresh();
+    }
+}
+
 async function loadSessionLogs() {
     const sessionId = state.selectedSessionId;
     const levelFilter = document.getElementById('log-level-filter').value;
@@ -868,6 +934,15 @@ async function checkHealth() {
         const health = await apiCall('/health');
         updateHealthIndicator('connected', `${health.total_sessions} sessions`);
     } catch (error) {
+        updateHealthIndicator('disconnected', 'Disconnected');
+    }
+}
+
+function updateHealthUI(status) {
+    // Update health indicator based on SSR status
+    if (status === 'healthy') {
+        updateHealthIndicator('connected', `${state.sessions.length} sessions`);
+    } else {
         updateHealthIndicator('disconnected', 'Disconnected');
     }
 }
@@ -1096,9 +1171,18 @@ function showSuccess(message) {
 }
 
 async function refreshAll() {
-    await loadSessions();
-    await loadPrompts();
-    await checkHealth();
+    // Skip initial API calls if SSR data is available
+    if (initFromSSR()) {
+        console.log('[SSR] Using server-rendered data, skipping initial API calls');
+        // Just update the UI with SSR data (HTML is already rendered)
+        updateHealthUI(state.healthStatus);
+        syncPlaygroundSessions();
+    } else {
+        // Fallback: fetch data from API
+        await loadSessions();
+        await loadPrompts();
+        await checkHealth();
+    }
 }
 
 // ========== Storage Functions ==========
@@ -1408,6 +1492,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Periodic refresh
     setInterval(checkHealth, 30000); // Health check every 30s
     setInterval(loadSessions, 60000); // Session list every 60s
+
+    // Start logs auto-refresh (default enabled)
+    startLogsAutoRefresh();
 
     // Handle resize events
     window.addEventListener('resize', () => {

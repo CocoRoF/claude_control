@@ -6,7 +6,6 @@ Each session gets its own log file in the logs/ directory.
 """
 import json
 import logging
-import os
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -28,6 +27,11 @@ class LogLevel(str, Enum):
     RESPONSE = "RESPONSE"
     MANAGER_EVENT = "MANAGER"  # Manager-specific events for hierarchical management
     GRAPH = "GRAPH"  # LangGraph state transitions and node executions
+    TOOL_USE = "TOOL"           # Tool invocation events
+    TOOL_RESULT = "TOOL_RES"    # Tool execution results
+    STREAM_EVENT = "STREAM"     # Stream-json events
+    MANAGER_EVENT = "MANAGER"   # Manager-specific events for hierarchical management
+    ITERATION = "ITER"          # Autonomous execution iteration complete
 
 
 class LogEntry:
@@ -212,7 +216,9 @@ class SessionLogger:
         output: Optional[str] = None,
         error: Optional[str] = None,
         duration_ms: Optional[int] = None,
-        cost_usd: Optional[float] = None
+        cost_usd: Optional[float] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        num_turns: Optional[int] = None
     ):
         """
         Log a response from Claude.
@@ -223,6 +229,8 @@ class SessionLogger:
             error: Error message if failed
             duration_ms: Execution duration in milliseconds
             cost_usd: API cost in USD
+            tool_calls: List of tool calls made during execution
+            num_turns: Number of conversation turns
         """
         # Store full message for log file
         output_length = len(output) if output else 0
@@ -236,7 +244,9 @@ class SessionLogger:
             "cost_usd": cost_usd,
             "output_length": output_length,
             "is_truncated": is_truncated,
-            "preview": preview if success else None
+            "preview": preview if success else None,
+            "tool_call_count": len(tool_calls) if tool_calls else 0,
+            "num_turns": num_turns
         }
         # Remove None values
         metadata = {k: v for k, v in metadata.items() if v is not None}
@@ -248,6 +258,293 @@ class SessionLogger:
             message = f"FAILED: {error}"
 
         self.log(LogLevel.RESPONSE, message, metadata)
+
+        # Log individual tool calls
+        if tool_calls:
+            for tool_call in tool_calls:
+                self.log_tool_use(
+                    tool_name=tool_call.get("name", "unknown"),
+                    tool_input=tool_call.get("input"),
+                    tool_id=tool_call.get("id")
+                )
+
+    def log_iteration_complete(
+        self,
+        iteration: int,
+        success: bool,
+        output: Optional[str] = None,
+        error: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        cost_usd: Optional[float] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        is_complete: bool = False,
+        stop_reason: Optional[str] = None
+    ):
+        """
+        Log completion of an autonomous execution iteration.
+
+        Args:
+            iteration: Iteration number (1-based)
+            success: Whether this iteration succeeded
+            output: Claude's output for this iteration
+            error: Error message if failed
+            duration_ms: Duration of this iteration
+            cost_usd: Cost of this iteration
+            tool_calls: Tool calls made during this iteration
+            is_complete: Whether the task is fully complete
+            stop_reason: Reason for stopping (if applicable)
+        """
+        output_length = len(output) if output else 0
+        is_truncated = output_length > 500
+        preview = output[:500] + "..." if output and is_truncated else output
+
+        # Build metadata
+        metadata = {
+            "type": "iteration_complete",
+            "iteration": iteration,
+            "success": success,
+            "duration_ms": duration_ms,
+            "cost_usd": cost_usd,
+            "output_length": output_length,
+            "is_truncated": is_truncated,
+            "tool_call_count": len(tool_calls) if tool_calls else 0,
+            "is_complete": is_complete,
+            "stop_reason": stop_reason,
+            "preview": preview if success else None,
+        }
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        # Build message
+        status = "✅" if success else "❌"
+        complete_marker = " [COMPLETE]" if is_complete else ""
+        cost_str = f", ${cost_usd:.4f}" if cost_usd else ""
+        duration_str = f" ({duration_ms}ms)" if duration_ms else ""
+        tool_str = f", {len(tool_calls)} tools" if tool_calls else ""
+
+        header = f"{status} Execution #{iteration}{complete_marker}{duration_str}{cost_str}{tool_str}"
+
+        if success and output:
+            # Include output preview in message
+            message = f"{header}\n{preview}"
+        elif error:
+            message = f"{header}\nError: {error}"
+        else:
+            message = header
+
+        self.log(LogLevel.ITERATION, message, metadata)
+
+    def log_tool_use(
+        self,
+        tool_name: str,
+        tool_input: Optional[Dict[str, Any]] = None,
+        tool_id: Optional[str] = None
+    ):
+        """
+        Log a tool invocation event with detailed context.
+
+        Args:
+            tool_name: Name of the tool being called
+            tool_input: Input parameters to the tool
+            tool_id: Unique ID for this tool use
+        """
+        # Format tool detail for readability
+        detail = self._format_tool_detail(tool_name, tool_input)
+
+        # Full input for metadata
+        input_str = json.dumps(tool_input, ensure_ascii=False) if tool_input else "{}"
+        is_truncated = len(input_str) > 500
+        input_preview = input_str[:500] + "..." if is_truncated else input_str
+
+        metadata = {
+            "type": "tool_use",
+            "tool_name": tool_name,
+            "tool_id": tool_id,
+            "detail": detail,
+            "input_preview": input_preview,
+            "input_length": len(input_str),
+            "is_truncated": is_truncated
+        }
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        message = f"🔧 {tool_name}: {detail}"
+        self.log(LogLevel.TOOL_USE, message, metadata)
+
+    def _format_tool_detail(self, tool_name: str, tool_input: Optional[Dict]) -> str:
+        """
+        Format tool input into a concise, informative detail string.
+
+        Args:
+            tool_name: Name of the tool
+            tool_input: Tool input dictionary
+
+        Returns:
+            Formatted detail string for display
+        """
+        if not tool_input:
+            return "(no input)"
+
+        try:
+            name_lower = tool_name.lower()
+
+            # Bash/shell commands
+            if name_lower in ("bash", "shell", "execute"):
+                command = tool_input.get("command", tool_input.get("cmd", ""))
+                if command:
+                    # Clean up and truncate
+                    command = command.strip().replace("\n", " ")
+                    if len(command) > 100:
+                        return f"`{command[:100]}...`"
+                    return f"`{command}`"
+
+            # Read file operations
+            elif name_lower in ("read", "readfile", "read_file", "view"):
+                file_path = tool_input.get("file_path", tool_input.get("path", tool_input.get("file", "")))
+                start_line = tool_input.get("start_line", tool_input.get("offset", ""))
+                end_line = tool_input.get("end_line", tool_input.get("limit", ""))
+                if file_path:
+                    # Get just filename for brevity
+                    filename = file_path.replace("\\", "/").split("/")[-1]
+                    if start_line and end_line:
+                        return f"{filename} (L{start_line}-{end_line})"
+                    elif start_line:
+                        return f"{filename} (from L{start_line})"
+                    return filename
+
+            # Write file operations
+            elif name_lower in ("write", "writefile", "write_file", "edit", "edit_file"):
+                file_path = tool_input.get("file_path", tool_input.get("path", tool_input.get("file", "")))
+                content = tool_input.get("content", tool_input.get("text", ""))
+                if file_path:
+                    filename = file_path.replace("\\", "/").split("/")[-1]
+                    if content:
+                        lines = content.count("\n") + 1
+                        chars = len(content)
+                        return f"{filename} (+{lines} lines, {chars} chars)"
+                    return filename
+
+            # Glob/search/list operations
+            elif name_lower in ("glob", "search", "find", "list", "ls", "listdir"):
+                pattern = tool_input.get("pattern", tool_input.get("query", tool_input.get("path", "")))
+                if pattern:
+                    if len(pattern) > 60:
+                        return f"`{pattern[:60]}...`"
+                    return f"`{pattern}`"
+
+            # Grep operations
+            elif name_lower in ("grep", "ripgrep", "rg"):
+                pattern = tool_input.get("pattern", tool_input.get("query", tool_input.get("regex", "")))
+                path = tool_input.get("path", tool_input.get("directory", ""))
+                if pattern:
+                    pat = f"`{pattern[:40]}`" if len(pattern) > 40 else f"`{pattern}`"
+                    if path:
+                        dir_name = path.replace("\\", "/").split("/")[-1]
+                        return f"{pat} in {dir_name}"
+                    return pat
+
+            # Web fetch
+            elif name_lower in ("fetch", "web", "http", "curl"):
+                url = tool_input.get("url", tool_input.get("uri", ""))
+                if url:
+                    if len(url) > 60:
+                        return f"{url[:60]}..."
+                    return url
+
+            # MCP tool calls (mcp__server__tool format)
+            elif tool_name.startswith("mcp__") or "__" in tool_name:
+                # Try to extract most relevant parameter
+                for key in ["query", "path", "file_path", "command", "url", "content", "message", "prompt"]:
+                    if key in tool_input:
+                        value = str(tool_input[key]).strip().replace("\n", " ")
+                        if len(value) > 80:
+                            return f"{key}=`{value[:80]}...`"
+                        return f"{key}=`{value}`"
+
+            # Default: show first meaningful parameter
+            for key, value in tool_input.items():
+                if key.startswith("_"):
+                    continue
+                value_str = str(value).strip().replace("\n", " ")
+                if len(value_str) > 80:
+                    return f"{key}=`{value_str[:80]}...`"
+                return f"{key}=`{value_str}`"
+
+            return "(empty input)"
+
+        except Exception as e:
+            return f"(parse error)"
+
+    def log_tool_result(
+        self,
+        tool_name: str,
+        tool_id: Optional[str] = None,
+        result: Optional[str] = None,
+        is_error: bool = False,
+        duration_ms: Optional[int] = None
+    ):
+        """
+        Log a tool execution result.
+
+        Args:
+            tool_name: Name of the tool
+            tool_id: Unique ID for this tool use
+            result: Tool execution result
+            is_error: Whether the tool execution failed
+            duration_ms: Tool execution time
+        """
+        result_length = len(result) if result else 0
+        is_truncated = result_length > 500
+        result_preview = result[:500] + "..." if result and is_truncated else result
+
+        metadata = {
+            "type": "tool_result",
+            "tool_name": tool_name,
+            "tool_id": tool_id,
+            "is_error": is_error,
+            "result_preview": result_preview,
+            "result_length": result_length,
+            "duration_ms": duration_ms
+        }
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        status = "ERROR" if is_error else "OK"
+        message = f"TOOL_RESULT [{status}]: {tool_name}"
+        self.log(LogLevel.TOOL_RESULT, message, metadata)
+
+    def log_stream_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any]
+    ):
+        """
+        Log a stream-json event from Claude CLI.
+
+        Args:
+            event_type: Type of stream event (system_init, tool_use, result, etc.)
+            data: Event data
+        """
+        # Extract key information based on event type
+        preview = ""
+        if event_type == "system_init":
+            tools = data.get("tools", [])
+            model = data.get("model", "unknown")
+            preview = f"Model: {model}, Tools: {len(tools)}"
+        elif event_type == "tool_use":
+            tool_name = data.get("tool_name", "unknown")
+            preview = f"Tool: {tool_name}"
+        elif event_type == "result":
+            duration = data.get("duration_ms", 0)
+            cost = data.get("total_cost_usd", 0)
+            preview = f"Duration: {duration}ms, Cost: ${cost:.6f}"
+
+        metadata = {
+            "type": "stream_event",
+            "event_type": event_type,
+            "preview": preview,
+            "data": data
+        }
+
+        message = f"STREAM [{event_type}]: {preview}"
+        self.log(LogLevel.STREAM_EVENT, message, metadata)
 
     def log_session_event(self, event: str, details: Optional[Dict[str, Any]] = None):
         """

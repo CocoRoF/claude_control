@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
@@ -255,18 +255,58 @@ app.include_router(agent_router)  # LangGraph agent sessions
 
 # Mount static files for Web UI Dashboard
 static_dir = Path(__file__).parent / "static"
+templates_dir = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=str(templates_dir))
+
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     logger.info(f"✅ Static files mounted from {static_dir}")
 
+if templates_dir.exists():
+    logger.info(f"✅ Jinja2 templates loaded from {templates_dir}")
 
-@app.get("/dashboard")
-async def dashboard():
-    """Serve the Web UI Dashboard"""
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
-    return {"error": "Dashboard not found"}
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Serve the Web UI Dashboard with server-side rendered initial data"""
+    # Get initial data for SSR
+    sessions = session_manager.list_sessions()
+    sessions_data = [s.model_dump() for s in sessions]
+
+    # Get prompts list
+    prompts_data = get_prompts_list()
+
+    # Get health status
+    pod_info = get_pod_info()
+    redis_client = get_app_redis_client(app)
+    redis_status = "disconnected"
+    if redis_client and redis_client.is_connected:
+        redis_status = "connected" if redis_client.health_check() else "error"
+
+    health_data = {
+        "status": "healthy",
+        "pod_name": pod_info.pod_name,
+        "pod_ip": pod_info.pod_ip,
+        "redis": redis_status
+    }
+
+    # Calculate stats
+    stats_data = {
+        "total": len(sessions),
+        "running": sum(1 for s in sessions if s.status == "running"),
+        "error": sum(1 for s in sessions if s.status == "error")
+    }
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "initial_sessions": sessions_data,
+            "initial_prompts": prompts_data,
+            "initial_health": health_data,
+            "initial_stats": stats_data
+        }
+    )
 
 if __name__ == "__main__":
     try:

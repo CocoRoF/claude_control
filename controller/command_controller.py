@@ -448,6 +448,46 @@ def get_prompts_dir() -> Path:
     return Path(__file__).parent.parent / "prompts"
 
 
+def get_prompts_list() -> list:
+    """
+    Get list of available prompt templates (sync version for SSR).
+
+    Returns a list of dicts with name, filename, and description.
+    """
+    prompts_dir = get_prompts_dir()
+    prompts = []
+
+    if prompts_dir.exists():
+        for file_path in sorted(prompts_dir.glob("*.md")):
+            if file_path.name.lower() == "readme.md":
+                continue
+
+            name = file_path.stem
+            description = None
+
+            # Read first non-empty line as description
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            description = line[:100]
+                            break
+                        elif line.startswith("# "):
+                            description = line[2:].strip()
+                            break
+            except Exception:
+                pass
+
+            prompts.append({
+                "name": name,
+                "filename": file_path.name,
+                "description": description
+            })
+
+    return prompts
+
+
 @router.get("/prompts", response_model=PromptListResponse)
 async def list_prompts():
     """

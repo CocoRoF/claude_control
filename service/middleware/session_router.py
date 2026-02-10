@@ -84,11 +84,16 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
         """
         Process request
 
-        1. If already proxied, process directly
-        2. Check if route needs session routing
-        3. Proxy if session is on different Pod
-        4. Process locally if on current Pod
+        1. If Redis disabled, skip routing entirely (local mode)
+        2. If already proxied, process directly
+        3. Check if route needs session routing
+        4. Proxy if session is on different Pod
+        5. Process locally if on current Pod
         """
+        # If Redis is disabled, skip all session routing (local mode)
+        if not self._redis_enabled:
+            return await call_next(request)
+
         path = request.url.path
         method = request.method
 
@@ -124,8 +129,8 @@ class SessionRoutingMiddleware(BaseHTTPMiddleware):
         logger.debug(f"🔍 [SessionRouter] Routing result: {routing_result}")
 
         if routing_result is None:
-            # No session info, process locally (expect 404)
-            logger.warning(f"Session not found in Redis: {session_id}")
+            # No session info, process locally (session may be local-only)
+            logger.debug(f"Session {session_id} not in Redis, processing locally")
             return await call_next(request)
 
         target_pod_name, target_pod_ip = routing_result
