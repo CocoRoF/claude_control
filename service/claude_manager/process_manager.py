@@ -42,7 +42,6 @@ from service.claude_manager.stream_parser import (
 )
 from service.logging.session_logger import get_session_logger
 from service.utils.utils import now_kst
-from service.logging.session_logger import get_session_logger
 
 logger = logging.getLogger(__name__)
 
@@ -945,9 +944,6 @@ Continue working on the task:
 
             current_prompt = prompt
             previous_hint = "Starting task"
-
-            # Get session logger for iteration logging
-            session_logger = get_session_logger(self.session_id, create_if_missing=False)
 
             while self._autonomous_iteration < effective_max_iterations:
                 # Check for stop request

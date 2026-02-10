@@ -884,7 +884,7 @@ class AgentSession:
                     event_keys = list(event.keys()) if isinstance(event, dict) else []
                     session_logger.log_graph_event(
                         event_type="stream_event",
-                        event_name=f"event_{event_count}",
+                        message=f"STREAM event_{event_count}",
                         data={
                             "event_number": event_count,
                             "event_keys": event_keys,
@@ -926,10 +926,10 @@ class AgentSession:
             duration_ms = int((time.time() - start_time) * 1000)
             if session_logger:
                 session_logger.log_graph_error(
-                    error_type=type(e).__name__,
                     error_message=str(e),
                     node_name="astream",
-                    state_summary={"events_yielded": event_count},
+                    iteration=self._current_iteration,
+                    error_type=type(e).__name__,
                 )
                 session_logger.log_graph_execution_complete(
                     success=False,
