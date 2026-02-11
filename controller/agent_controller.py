@@ -613,28 +613,18 @@ async def stop_autonomous_execution(
     Stop the autonomous execution loop.
     
     Note: 새로운 AutonomousGraph는 동기 실행이므로 중간 중단이 제한적입니다.
+    실행 중인 요청을 취소하려면 HTTP 요청 자체를 취소하세요.
     """
     agent = agent_manager.get_agent(session_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"AgentSession not found: {session_id}")
 
-    # 기존 process의 autonomous 상태 확인 (하위 호환성)
-    process = agent.process
-    if process and process.autonomous_state.get("is_running"):
-        process.stop_autonomous()
-        logger.info(f"[{session_id}] 🛑 Autonomous execution stop requested")
-        return {
-            "success": True,
-            "message": "Autonomous execution will stop after current iteration",
-            "current_iteration": process.autonomous_state.get("iteration", 0)
-        }
-
-    # 새로운 AutonomousGraph는 스트리밍 중에는 중단 불가
-    logger.info(f"[{session_id}] ℹ️ No autonomous execution to stop (may be using new AutonomousGraph)")
+    # AutonomousGraph는 동기 실행이므로 중단 불가능
+    logger.info(f"[{session_id}] ℹ️ AutonomousGraph uses synchronous execution - cancel HTTP request to stop")
     return {
         "success": True,
-        "message": "Stop requested (new AutonomousGraph executes synchronously)",
-        "current_iteration": 0
+        "message": "AutonomousGraph executes synchronously. Cancel the HTTP request to stop execution.",
+        "graph_type": "autonomous_graph" if agent.autonomous else "simple"
     }
 
 
@@ -644,33 +634,21 @@ async def get_autonomous_status(
 ):
     """
     Get the current autonomous execution status.
+    
+    AutonomousGraph는 동기 실행이므로 실행 중일 때는
+    HTTP 요청이 블로킹되어 이 엔드포인트에 접근할 수 없습니다.
     """
     agent = agent_manager.get_agent(session_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"AgentSession not found: {session_id}")
 
-    # 기존 process의 autonomous 상태 확인 (하위 호환성)
-    process = agent.process
-    if process:
-        state = process.autonomous_state
-        return {
-            "session_id": session_id,
-            "is_running": state.get("is_running", False),
-            "iteration": state.get("iteration", 0),
-            "max_iterations": state.get("max_iterations", 100),
-            "original_request": state.get("original_request"),
-            "stop_requested": state.get("stop_requested", False),
-            "graph_type": "autonomous_graph" if agent.autonomous else "simple"
-        }
-
     return {
         "session_id": session_id,
-        "is_running": False,
-        "iteration": 0,
+        "is_running": False,  # 동기 실행이므로 이 엔드포인트 호출 시점에는 실행 중이 아님
         "max_iterations": agent.autonomous_max_iterations,
-        "original_request": None,
-        "stop_requested": False,
-        "graph_type": "autonomous_graph" if agent.autonomous else "simple"
+        "graph_type": "autonomous_graph" if agent.autonomous else "simple",
+        "mode": "difficulty_based",  # 난이도 기반 그래프
+        "paths": ["easy (direct_answer)", "medium (answer + review)", "hard (todos + review + final)"]
     }
 
 
@@ -792,23 +770,12 @@ async def delegate_task(
         worker_process.current_task = request.prompt[:100]
         worker_process.last_activity = datetime.now()
 
-        if worker.autonomous:
-            result = await worker_process.execute_autonomous(
-                prompt=request.prompt,
-                timeout_per_iteration=request.timeout or worker.timeout,
-                max_iterations=worker.autonomous_max_iterations,
-                skip_permissions=request.skip_permissions
-            )
-            output = result.get("final_output")
-            success = result.get("success", False)
-        else:
-            result = await worker_process.execute(
-                prompt=request.prompt,
-                timeout=request.timeout or worker.timeout,
-                skip_permissions=request.skip_permissions
-            )
-            output = result.get("output")
-            success = result.get("success", False)
+        # 새로운 AutonomousGraph 기반 실행 (autonomous/non-autonomous 모두 지원)
+        output = await worker.invoke(
+            input_text=request.prompt,
+            max_iterations=worker.autonomous_max_iterations if worker.autonomous else 1,
+        )
+        success = bool(output and not output.startswith("Error:"))
 
         worker_process.is_busy = False
         worker_process.last_output = output[:500] if output else None
@@ -820,8 +787,8 @@ async def delegate_task(
                 worker_name=worker.session_name,
                 success=success,
                 output_preview=output[:200] if output else None,
-                duration_ms=result.get("duration_ms") or result.get("total_duration_ms"),
-                cost_usd=result.get("cost_usd") or result.get("total_cost_usd")
+                duration_ms=None,
+                cost_usd=None
             )
 
         return DelegateTaskResponse(
@@ -831,7 +798,7 @@ async def delegate_task(
             delegation_id=delegation_id,
             status="completed" if success else "error",
             output=output,
-            error=result.get("error") or result.get("stop_reason") if not success else None
+            error=None if success else output
         )
 
     except Exception as e:

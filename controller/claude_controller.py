@@ -354,156 +354,6 @@ async def execute_prompt_stream(
     )
 
 
-# ========== Autonomous Execution API ==========
-
-@router.post("/{session_id}/execute/autonomous", response_model=AutonomousExecuteResponse)
-async def execute_autonomous(
-    session_id: str = Path(..., description="Session ID"),
-    request: AutonomousExecuteRequest = ...
-):
-    """
-    Execute a task autonomously with self-managing loop.
-
-    This endpoint starts an autonomous execution loop where Claude will:
-    1. Work on the user's request
-    2. Continue automatically until the task is complete
-    3. Periodically remind itself of the original request
-    4. Self-verify completion before stopping
-
-    The loop continues until:
-    - Claude outputs [TASK_COMPLETE]
-    - Maximum iterations are reached
-    - An error occurs
-    - The user stops it via /execute/autonomous/stop
-
-    This is a blocking call that returns when the autonomous execution completes.
-    For long-running tasks, consider using a longer timeout or monitoring via
-    /execute/autonomous/status endpoint.
-    """
-    process = session_manager.get_process(session_id)
-    if not process:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
-
-    if not process.is_alive():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Session is not running (status: {process.status})"
-        )
-
-    # Check if autonomous execution is already running
-    if process.autonomous_state.get("is_running"):
-        raise HTTPException(
-            status_code=409,
-            detail="Autonomous execution already in progress"
-        )
-
-    session_logger = get_session_logger(session_id, create_if_missing=False)
-
-    try:
-        if session_logger:
-            session_logger.log_command(
-                prompt=f"[AUTONOMOUS] {request.prompt}",
-                timeout=request.timeout_per_iteration,
-                system_prompt=request.system_prompt,
-                max_turns=request.max_turns
-            )
-
-        logger.info(f"[{session_id}] 🚀 Starting autonomous execution...")
-
-        result = await process.execute_autonomous(
-            prompt=request.prompt,
-            timeout_per_iteration=request.timeout_per_iteration or process.timeout,  # Use session default
-            max_iterations=request.max_iterations or process.autonomous_max_iterations,  # Use session default
-            skip_permissions=request.skip_permissions,
-            system_prompt=request.system_prompt,
-            max_turns=request.max_turns or process.max_turns  # Use session default
-        )
-
-        if session_logger:
-            session_logger.log_response(
-                success=result.get("success", False),
-                output=f"[Autonomous: {result.get('total_iterations', 0)} iterations] {result.get('final_output', '')[:500]}",
-                error=None if result.get("success") else result.get("stop_reason"),
-                duration_ms=result.get("total_duration_ms")
-            )
-
-        return AutonomousExecuteResponse(
-            success=result.get("success", False),
-            session_id=session_id,
-            is_complete=result.get("is_complete", False),
-            total_iterations=result.get("total_iterations", 0),
-            original_request=result.get("original_request", request.prompt),
-            final_output=result.get("final_output"),
-            all_outputs=result.get("all_outputs"),
-            error=None if result.get("success") else result.get("stop_reason"),
-            total_duration_ms=result.get("total_duration_ms"),
-            stop_reason=result.get("stop_reason", "unknown")
-        )
-
-    except Exception as e:
-        logger.error(f"❌ Autonomous execution failed: {e}", exc_info=True)
-        if session_logger:
-            session_logger.error(f"Autonomous execution failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{session_id}/execute/autonomous/stop")
-async def stop_autonomous_execution(
-    session_id: str = Path(..., description="Session ID")
-):
-    """
-    Stop the autonomous execution loop.
-
-    Gracefully stops the autonomous execution after the current iteration completes.
-    """
-    process = session_manager.get_process(session_id)
-    if not process:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
-
-    if not process.autonomous_state.get("is_running"):
-        raise HTTPException(
-            status_code=400,
-            detail="No autonomous execution in progress"
-        )
-
-    process.stop_autonomous()
-    logger.info(f"[{session_id}] 🛑 Autonomous execution stop requested")
-
-    return {
-        "success": True,
-        "message": "Autonomous execution will stop after current iteration",
-        "current_iteration": process.autonomous_state.get("iteration", 0)
-    }
-
-
-@router.get("/{session_id}/execute/autonomous/status")
-async def get_autonomous_status(
-    session_id: str = Path(..., description="Session ID")
-):
-    """
-    Get the current autonomous execution status.
-
-    Returns the current state of autonomous execution including:
-    - Whether it's running
-    - Current iteration count
-    - Original request
-    - Whether stop was requested
-    """
-    process = session_manager.get_process(session_id)
-    if not process:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
-
-    state = process.autonomous_state
-    return {
-        "session_id": session_id,
-        "is_running": state.get("is_running", False),
-        "iteration": state.get("iteration", 0),
-        "max_iterations": state.get("max_iterations", 100),
-        "original_request": state.get("original_request"),
-        "stop_requested": state.get("stop_requested", False)
-    }
-
-
 # ========== Storage API ==========
 
 @router.get("/{session_id}/storage", response_model=StorageListResponse)
@@ -651,26 +501,14 @@ async def delegate_task(
         worker_process.current_task = request.prompt[:100]
         worker_process.last_activity = datetime.now()
 
-        # Execute based on worker's autonomous mode
-        if worker_process.autonomous:
-            # Use autonomous execution
-            result = await worker_process.execute_autonomous(
-                prompt=request.prompt,
-                timeout_per_iteration=request.timeout or worker_process.timeout,
-                max_iterations=worker_process.autonomous_max_iterations,
-                skip_permissions=request.skip_permissions
-            )
-            output = result.get("final_output")
-            success = result.get("success", False)
-        else:
-            # Use single execution
-            result = await worker_process.execute(
-                prompt=request.prompt,
-                timeout=request.timeout or worker_process.timeout,
-                skip_permissions=request.skip_permissions
-            )
-            output = result.get("output")
-            success = result.get("success", False)
+        # Execute task (use agent_controller for autonomous graph execution)
+        result = await worker_process.execute(
+            prompt=request.prompt,
+            timeout=request.timeout or worker_process.timeout,
+            skip_permissions=request.skip_permissions
+        )
+        output = result.get("output")
+        success = result.get("success", False)
 
         # Update worker state
         worker_process.is_busy = False
@@ -684,8 +522,8 @@ async def delegate_task(
                 worker_name=worker_session.session_name,
                 success=success,
                 output_preview=output[:200] if output else None,
-                duration_ms=result.get("duration_ms") or result.get("total_duration_ms"),
-                cost_usd=result.get("cost_usd") or result.get("total_cost_usd")
+                duration_ms=result.get("duration_ms"),
+                cost_usd=result.get("cost_usd")
             )
 
         return DelegateTaskResponse(
