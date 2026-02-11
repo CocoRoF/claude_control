@@ -464,7 +464,7 @@ async def get_agent_workers(
 
 
 # ============================================================================
-# Autonomous Execution API
+# Autonomous Execution API (NEW: 난이도 기반 AutonomousGraph 사용)
 # ============================================================================
 
 
@@ -474,29 +474,29 @@ async def execute_autonomous(
     request: AutonomousExecuteRequest = ...
 ):
     """
-    Execute a task autonomously with self-managing loop.
+    Execute a task autonomously using the new difficulty-based AutonomousGraph.
+    
+    난이도 기반 자율 실행:
+    - EASY: 바로 답변
+    - MEDIUM: 답변 + 검토
+    - HARD: TODO 생성 → 개별 실행 → 검토 → 최종 답변
     """
+    import time
+    start_time = time.time()
+    
     agent = agent_manager.get_agent(session_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"AgentSession not found: {session_id}")
 
-    process = agent.process
-    if not process:
-        raise HTTPException(status_code=400, detail="AgentSession process not available")
-
-    if not process.is_alive():
+    if not agent.is_initialized:
         raise HTTPException(
             status_code=400,
-            detail=f"Session is not running (status: {process.status})"
-        )
-
-    if process.autonomous_state.get("is_running"):
-        raise HTTPException(
-            status_code=409,
-            detail="Autonomous execution already in progress"
+            detail="AgentSession is not initialized"
         )
 
     session_logger = get_session_logger(session_id, create_if_missing=False)
+    all_outputs = []
+    node_count = 0
 
     try:
         if session_logger:
@@ -507,43 +507,102 @@ async def execute_autonomous(
                 max_turns=request.max_turns
             )
 
-        logger.info(f"[{session_id}] 🚀 Starting autonomous execution...")
+        logger.info(f"[{session_id}] 🚀 Starting autonomous execution with AutonomousGraph...")
 
-        result = await process.execute_autonomous(
-            prompt=request.prompt,
-            timeout_per_iteration=request.timeout_per_iteration or process.timeout,
-            max_iterations=request.max_iterations or process.autonomous_max_iterations,
-            skip_permissions=request.skip_permissions,
-            system_prompt=request.system_prompt,
-            max_turns=request.max_turns or process.max_turns
-        )
+        # 스트리밍으로 실행하여 각 노드 이벤트를 로깅
+        final_result = None
+        async for event in agent.astream(
+            input_text=request.prompt,
+            max_iterations=request.max_iterations or agent.autonomous_max_iterations,
+        ):
+            node_count += 1
+            
+            # 이벤트에서 노드 정보 추출 및 로깅
+            if isinstance(event, dict):
+                for node_name, node_result in event.items():
+                    if node_name.startswith("__"):
+                        continue
+                    
+                    # 노드 결과에서 출력 추출
+                    if isinstance(node_result, dict):
+                        output = (
+                            node_result.get("final_answer") or 
+                            node_result.get("answer") or 
+                            node_result.get("last_output") or
+                            node_result.get("review_feedback")
+                        )
+                        if output:
+                            all_outputs.append(f"[{node_name}] {output[:500]}")
+                        
+                        # 최종 결과 저장
+                        if node_result.get("is_complete") or node_result.get("final_answer"):
+                            final_result = node_result
+                    
+                    logger.debug(f"[{session_id}] Node: {node_name}")
+
+        # 최종 결과 추출
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        if final_result:
+            final_output = (
+                final_result.get("final_answer") or
+                final_result.get("answer") or
+                final_result.get("last_output") or
+                ""
+            )
+            is_complete = final_result.get("is_complete", True)
+            error = final_result.get("error")
+            difficulty = final_result.get("difficulty")
+            stop_reason = f"completed ({difficulty})" if not error else error
+        else:
+            final_output = all_outputs[-1] if all_outputs else "No output"
+            is_complete = True
+            error = None
+            stop_reason = "completed"
+
+        success = error is None
 
         if session_logger:
             session_logger.log_response(
-                success=result.get("success", False),
-                output=f"[Autonomous: {result.get('total_iterations', 0)} iterations] {result.get('final_output', '')[:500]}",
-                error=None if result.get("success") else result.get("stop_reason"),
-                duration_ms=result.get("total_duration_ms")
+                success=success,
+                output=f"[Autonomous: {node_count} nodes] {final_output[:500] if final_output else 'No output'}",
+                error=error,
+                duration_ms=duration_ms
             )
 
+        logger.info(f"[{session_id}] ✅ Autonomous execution completed: {stop_reason}")
+
         return AutonomousExecuteResponse(
-            success=result.get("success", False),
+            success=success,
             session_id=session_id,
-            is_complete=result.get("is_complete", False),
-            total_iterations=result.get("total_iterations", 0),
-            original_request=result.get("original_request", request.prompt),
-            final_output=result.get("final_output"),
-            all_outputs=result.get("all_outputs"),
-            error=None if result.get("success") else result.get("stop_reason"),
-            total_duration_ms=result.get("total_duration_ms"),
-            stop_reason=result.get("stop_reason", "unknown")
+            is_complete=is_complete,
+            total_iterations=node_count,
+            original_request=request.prompt,
+            final_output=final_output,
+            all_outputs=all_outputs if all_outputs else None,
+            error=error,
+            total_duration_ms=duration_ms,
+            stop_reason=stop_reason
         )
 
     except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
         logger.error(f"❌ Autonomous execution failed: {e}", exc_info=True)
         if session_logger:
             session_logger.error(f"Autonomous execution failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        
+        return AutonomousExecuteResponse(
+            success=False,
+            session_id=session_id,
+            is_complete=False,
+            total_iterations=node_count,
+            original_request=request.prompt,
+            final_output=all_outputs[-1] if all_outputs else None,
+            all_outputs=all_outputs if all_outputs else None,
+            error=str(e),
+            total_duration_ms=duration_ms,
+            stop_reason=f"error: {type(e).__name__}"
+        )
 
 
 @router.post("/{session_id}/execute/autonomous/stop")
@@ -552,28 +611,30 @@ async def stop_autonomous_execution(
 ):
     """
     Stop the autonomous execution loop.
+    
+    Note: 새로운 AutonomousGraph는 동기 실행이므로 중간 중단이 제한적입니다.
     """
     agent = agent_manager.get_agent(session_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"AgentSession not found: {session_id}")
 
+    # 기존 process의 autonomous 상태 확인 (하위 호환성)
     process = agent.process
-    if not process:
-        raise HTTPException(status_code=400, detail="AgentSession process not available")
+    if process and process.autonomous_state.get("is_running"):
+        process.stop_autonomous()
+        logger.info(f"[{session_id}] 🛑 Autonomous execution stop requested")
+        return {
+            "success": True,
+            "message": "Autonomous execution will stop after current iteration",
+            "current_iteration": process.autonomous_state.get("iteration", 0)
+        }
 
-    if not process.autonomous_state.get("is_running"):
-        raise HTTPException(
-            status_code=400,
-            detail="No autonomous execution in progress"
-        )
-
-    process.stop_autonomous()
-    logger.info(f"[{session_id}] 🛑 Autonomous execution stop requested")
-
+    # 새로운 AutonomousGraph는 스트리밍 중에는 중단 불가
+    logger.info(f"[{session_id}] ℹ️ No autonomous execution to stop (may be using new AutonomousGraph)")
     return {
         "success": True,
-        "message": "Autonomous execution will stop after current iteration",
-        "current_iteration": process.autonomous_state.get("iteration", 0)
+        "message": "Stop requested (new AutonomousGraph executes synchronously)",
+        "current_iteration": 0
     }
 
 
@@ -588,18 +649,28 @@ async def get_autonomous_status(
     if not agent:
         raise HTTPException(status_code=404, detail=f"AgentSession not found: {session_id}")
 
+    # 기존 process의 autonomous 상태 확인 (하위 호환성)
     process = agent.process
-    if not process:
-        raise HTTPException(status_code=400, detail="AgentSession process not available")
+    if process:
+        state = process.autonomous_state
+        return {
+            "session_id": session_id,
+            "is_running": state.get("is_running", False),
+            "iteration": state.get("iteration", 0),
+            "max_iterations": state.get("max_iterations", 100),
+            "original_request": state.get("original_request"),
+            "stop_requested": state.get("stop_requested", False),
+            "graph_type": "autonomous_graph" if agent.autonomous else "simple"
+        }
 
-    state = process.autonomous_state
     return {
         "session_id": session_id,
-        "is_running": state.get("is_running", False),
-        "iteration": state.get("iteration", 0),
-        "max_iterations": state.get("max_iterations", 100),
-        "original_request": state.get("original_request"),
-        "stop_requested": state.get("stop_requested", False)
+        "is_running": False,
+        "iteration": 0,
+        "max_iterations": agent.autonomous_max_iterations,
+        "original_request": None,
+        "stop_requested": False,
+        "graph_type": "autonomous_graph" if agent.autonomous else "simple"
     }
 
 

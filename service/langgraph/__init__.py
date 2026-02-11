@@ -8,6 +8,7 @@ Claude CLI와 LangGraph를 통합하여 상태 관리 기능과 CLI의 파일 �
 - ClaudeCLIChatModel: ClaudeProcess를 래핑한 LangChain ChatModel
 - AgentSession: CompiledStateGraph 기반 에이전트 세션
 - AgentSessionManager: AgentSession 관리자
+- AutonomousGraph: 난이도 기반 자율 실행 그래프
 
 사용 예:
     # 방법 1: AgentSession 직접 생성
@@ -25,6 +26,13 @@ Claude CLI와 LangGraph를 통합하여 상태 관리 기능과 CLI의 파일 �
     manager = get_agent_session_manager()
     agent = await manager.create_agent_session(request)
     result = await agent.invoke("Hello")
+
+    # 방법 3: AutonomousGraph 직접 사용
+    from service.langgraph import AutonomousGraph, AutonomousState
+
+    graph = AutonomousGraph(model)
+    compiled = graph.build()
+    result = await compiled.ainvoke({"input": "Complex task..."})
 """
 
 from service.langgraph.claude_cli_model import ClaudeCLIChatModel
@@ -33,6 +41,14 @@ from service.langgraph.agent_session_manager import (
     AgentSessionManager,
     get_agent_session_manager,
     reset_agent_session_manager,
+)
+from service.langgraph.autonomous_graph import (
+    AutonomousGraph,
+    AutonomousState,
+    Difficulty,
+    ReviewResult,
+    TodoItem,
+    TodoStatus,
 )
 
 __all__ = [
@@ -45,4 +61,11 @@ __all__ = [
     "AgentSessionManager",
     "get_agent_session_manager",
     "reset_agent_session_manager",
+    # Autonomous Graph
+    "AutonomousGraph",
+    "AutonomousState",
+    "Difficulty",
+    "ReviewResult",
+    "TodoItem",
+    "TodoStatus",
 ]

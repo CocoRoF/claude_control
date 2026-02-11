@@ -73,6 +73,17 @@ from service.claude_manager.process_manager import ClaudeProcess
 from service.langgraph.claude_cli_model import ClaudeCLIChatModel
 from service.logging.session_logger import get_session_logger, SessionLogger
 
+# Lazy import to avoid circular dependency
+_autonomous_graph_module = None
+
+def _get_autonomous_graph_class():
+    """Lazy import of AutonomousGraph to avoid circular imports."""
+    global _autonomous_graph_module
+    if _autonomous_graph_module is None:
+        from service.langgraph import autonomous_graph as ag
+        _autonomous_graph_module = ag
+    return _autonomous_graph_module.AutonomousGraph
+
 logger = logging.getLogger(__name__)
 
 
@@ -201,6 +212,9 @@ class AgentSession:
         self._current_thread_id: str = "default"
         self._current_iteration: int = 0
         self._execution_start_time: Optional[datetime] = None
+
+        # Autonomous 그래프 (autonomous 모드일 때 사용)
+        self._autonomous_graph: Optional[CompiledStateGraph] = None
 
         # 초기 상태 설정 (STARTING 사용)
         self._status = SessionStatus.STARTING
@@ -495,13 +509,53 @@ class AgentSession:
         """
         LangGraph StateGraph 빌드.
 
-        그래프 구조:
-        START -> agent -> router -> END or agent (반복)
+        autonomous 모드일 경우: 난이도 기반 AutonomousGraph 사용
+        non-autonomous 모드: 단순 agent -> process_output 그래프 사용
         """
         # 체크포인터 설정
         if self._enable_checkpointing:
             self._checkpointer = MemorySaver()
 
+        # Autonomous 모드일 때는 AutonomousGraph 사용
+        if self._autonomous:
+            self._build_autonomous_graph()
+        else:
+            self._build_simple_graph()
+
+        logger.debug(f"[{self._session_id}] StateGraph built successfully (autonomous={self._autonomous})")
+
+    def _build_autonomous_graph(self):
+        """
+        Autonomous 모드용 그래프 빌드.
+
+        난이도 기반 AutonomousGraph 사용:
+        - Easy: 바로 답변
+        - Medium: 답변 + 검토
+        - Hard: TODO 생성 -> 개별 실행 -> 검토 -> 최종 답변
+        """
+        AutonomousGraph = _get_autonomous_graph_class()
+        
+        autonomous_graph_builder = AutonomousGraph(
+            model=self._model,
+            session_id=self._session_id,
+            enable_checkpointing=self._enable_checkpointing,
+            max_review_retries=3,
+        )
+        
+        self._autonomous_graph = autonomous_graph_builder.build()
+        
+        # 기본 그래프도 빌드 (호환성)
+        self._build_simple_graph()
+        
+        logger.info(f"[{self._session_id}] AutonomousGraph built for autonomous execution")
+
+    def _build_simple_graph(self):
+        """
+        Non-autonomous 모드용 단순 그래프 빌드.
+
+        그래프 구조:
+        START -> agent -> process_output -> END or agent (반복)
+        """
         # StateGraph 생성
         graph_builder = StateGraph(AgentState)
 
@@ -526,8 +580,6 @@ class AgentSession:
             self._graph = graph_builder.compile(checkpointer=self._checkpointer)
         else:
             self._graph = graph_builder.compile()
-
-        logger.debug(f"[{self._session_id}] StateGraph built successfully")
 
     async def _agent_node(self, state: AgentState) -> Dict[str, Any]:
         """
@@ -724,6 +776,11 @@ class AgentSession:
         """
         동기식 실행 (결과 반환).
 
+        autonomous 모드일 경우 난이도 기반 AutonomousGraph 사용:
+        - Easy: 바로 답변
+        - Medium: 답변 + 검토
+        - Hard: TODO 생성 -> 개별 실행 -> 검토 -> 최종 답변
+
         Args:
             input_text: 사용자 입력 텍스트
             thread_id: 스레드 ID (체크포인팅용)
@@ -753,11 +810,37 @@ class AgentSession:
                 input_text=input_text,
                 thread_id=thread_id,
                 max_iterations=effective_max_iterations,
-                execution_mode="invoke"
+                execution_mode="invoke_autonomous" if self._autonomous else "invoke"
             )
 
         try:
-            # 초기 상태 구성
+            config = {"configurable": {"thread_id": thread_id}}
+
+            # Autonomous 모드: 난이도 기반 AutonomousGraph 사용
+            if self._autonomous and self._autonomous_graph:
+                result = await self._invoke_autonomous(input_text, config, **kwargs)
+                duration_ms = int((time.time() - start_time) * 1000)
+                
+                final_output = result.get("final_answer", "") or result.get("answer", "")
+                has_error = bool(result.get("error"))
+                
+                # 로깅: 그래프 실행 완료
+                if session_logger:
+                    session_logger.log_graph_execution_complete(
+                        success=not has_error,
+                        total_iterations=result.get("metadata", {}).get("completed_todos", 0),
+                        final_output=final_output[:500] if final_output else None,
+                        total_duration_ms=duration_ms,
+                        stop_reason="completed" if not has_error else result.get("error")
+                    )
+                
+                if has_error:
+                    self._error_message = result["error"]
+                    return f"Error: {result['error']}"
+                
+                return final_output
+            
+            # Non-autonomous 모드: 기존 simple graph 사용
             initial_state: AgentState = {
                 "messages": [HumanMessage(content=input_text)],
                 "current_step": "start",
@@ -771,10 +854,7 @@ class AgentSession:
                 "is_complete": False,
             }
 
-            # 그래프 실행
-            config = {"configurable": {"thread_id": thread_id}}
             result = await self._graph.ainvoke(initial_state, config)
-
             duration_ms = int((time.time() - start_time) * 1000)
             self._status = SessionStatus.RUNNING
 
@@ -817,6 +897,73 @@ class AgentSession:
 
             raise
 
+    async def _invoke_autonomous(
+        self,
+        input_text: str,
+        config: Dict[str, Any],
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Autonomous 그래프 실행 (난이도 기반).
+
+        Args:
+            input_text: 사용자 입력
+            config: 실행 설정
+            **kwargs: 추가 메타데이터
+
+        Returns:
+            실행 결과 딕셔너리
+        """
+        if not self._autonomous_graph:
+            raise RuntimeError("AutonomousGraph not built")
+
+        # AutonomousGraph 초기 상태 생성
+        AutonomousGraph = _get_autonomous_graph_class()
+        autonomous_graph_builder = AutonomousGraph(
+            model=self._model,
+            session_id=self._session_id,
+        )
+        initial_state = autonomous_graph_builder.get_initial_state(input_text, **kwargs)
+
+        # 그래프 실행
+        result = await self._autonomous_graph.ainvoke(initial_state, config)
+        
+        self._status = SessionStatus.RUNNING
+        
+        return result
+
+    async def _astream_autonomous(
+        self,
+        input_text: str,
+        config: Dict[str, Any],
+        **kwargs,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Autonomous 그래프 스트리밍 실행.
+
+        Args:
+            input_text: 사용자 입력
+            config: 실행 설정
+            **kwargs: 추가 메타데이터
+
+        Yields:
+            각 노드 실행 결과
+        """
+        if not self._autonomous_graph:
+            raise RuntimeError("AutonomousGraph not built")
+
+        # AutonomousGraph 초기 상태 생성
+        AutonomousGraph = _get_autonomous_graph_class()
+        autonomous_graph_builder = AutonomousGraph(
+            model=self._model,
+            session_id=self._session_id,
+        )
+        initial_state = autonomous_graph_builder.get_initial_state(input_text, **kwargs)
+
+        # 그래프 스트리밍 실행
+        async for event in self._autonomous_graph.astream(initial_state, config):
+            yield event
+
     async def astream(
         self,
         input_text: str,
@@ -826,6 +973,8 @@ class AgentSession:
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         스트리밍 실행.
+
+        autonomous 모드일 경우 난이도 기반 AutonomousGraph 사용.
 
         Args:
             input_text: 사용자 입력 텍스트
@@ -856,43 +1005,65 @@ class AgentSession:
                 input_text=input_text,
                 thread_id=thread_id,
                 max_iterations=effective_max_iterations,
-                execution_mode="astream",
+                execution_mode="astream_autonomous" if self._autonomous else "astream",
             )
 
         try:
-            initial_state: AgentState = {
-                "messages": [HumanMessage(content=input_text)],
-                "current_step": "start",
-                "last_output": None,
-                "metadata": {
-                    "iteration": 0,
-                    "max_iterations": effective_max_iterations,
-                    **kwargs,
-                },
-                "error": None,
-                "is_complete": False,
-            }
-
             config = {"configurable": {"thread_id": thread_id}}
 
-            async for event in self._graph.astream(initial_state, config):
-                event_count += 1
-                last_event = event
+            # Autonomous 모드: AutonomousGraph 사용
+            if self._autonomous and self._autonomous_graph:
+                async for event in self._astream_autonomous(input_text, config, **kwargs):
+                    event_count += 1
+                    last_event = event
 
-                # 스트림 이벤트 로깅
-                if session_logger:
-                    event_keys = list(event.keys()) if isinstance(event, dict) else []
-                    session_logger.log_graph_event(
-                        event_type="stream_event",
-                        message=f"STREAM event_{event_count}",
-                        data={
-                            "event_number": event_count,
-                            "event_keys": event_keys,
-                            "elapsed_ms": int((time.time() - start_time) * 1000),
-                        },
-                    )
+                    # 스트림 이벤트 로깅
+                    if session_logger:
+                        event_keys = list(event.keys()) if isinstance(event, dict) else []
+                        session_logger.log_graph_event(
+                            event_type="stream_event",
+                            message=f"AUTONOMOUS_STREAM event_{event_count}",
+                            data={
+                                "event_number": event_count,
+                                "event_keys": event_keys,
+                                "elapsed_ms": int((time.time() - start_time) * 1000),
+                            },
+                        )
 
-                yield event
+                    yield event
+            else:
+                # Non-autonomous 모드: 기존 simple graph
+                initial_state: AgentState = {
+                    "messages": [HumanMessage(content=input_text)],
+                    "current_step": "start",
+                    "last_output": None,
+                    "metadata": {
+                        "iteration": 0,
+                        "max_iterations": effective_max_iterations,
+                        **kwargs,
+                    },
+                    "error": None,
+                    "is_complete": False,
+                }
+
+                async for event in self._graph.astream(initial_state, config):
+                    event_count += 1
+                    last_event = event
+
+                    # 스트림 이벤트 로깅
+                    if session_logger:
+                        event_keys = list(event.keys()) if isinstance(event, dict) else []
+                        session_logger.log_graph_event(
+                            event_type="stream_event",
+                            message=f"STREAM event_{event_count}",
+                            data={
+                                "event_number": event_count,
+                                "event_keys": event_keys,
+                                "elapsed_ms": int((time.time() - start_time) * 1000),
+                            },
+                        )
+
+                    yield event
 
             self._status = SessionStatus.RUNNING
 
@@ -902,12 +1073,14 @@ class AgentSession:
                 # 마지막 이벤트에서 출력 추출 시도
                 final_output = None
                 if last_event and isinstance(last_event, dict):
-                    for key in ["process_output", "agent", "__end__"]:
+                    # Autonomous 그래프용 키
+                    for key in ["final_answer", "direct_answer", "answer", "process_output", "agent", "__end__"]:
                         if key in last_event:
                             node_result = last_event[key]
-                            if isinstance(node_result, dict) and "last_output" in node_result:
-                                final_output = node_result["last_output"]
-                                break
+                            if isinstance(node_result, dict):
+                                final_output = node_result.get("final_answer") or node_result.get("answer") or node_result.get("last_output")
+                                if final_output:
+                                    break
 
                 session_logger.log_graph_execution_complete(
                     success=True,
@@ -1100,20 +1273,56 @@ class AgentSession:
             logger.warning(f"[{self._session_id}] Could not get history: {e}")
             return []
 
-    def visualize(self) -> Optional[bytes]:
+    def visualize(self, autonomous: bool = True) -> Optional[bytes]:
         """
         그래프 시각화 (PNG 이미지 반환).
+
+        Args:
+            autonomous: True이면 AutonomousGraph, False이면 기본 그래프
 
         Returns:
             PNG 이미지 바이트 또는 None
         """
-        if not self._graph:
+        graph_to_visualize = None
+        
+        if autonomous and self._autonomous_graph:
+            graph_to_visualize = self._autonomous_graph
+        elif self._graph:
+            graph_to_visualize = self._graph
+        
+        if not graph_to_visualize:
             return None
 
         try:
-            return self._graph.get_graph().draw_mermaid_png()
+            return graph_to_visualize.get_graph().draw_mermaid_png()
         except Exception as e:
             logger.warning(f"[{self._session_id}] Could not visualize graph: {e}")
+            return None
+
+    def get_mermaid_diagram(self, autonomous: bool = True) -> Optional[str]:
+        """
+        Mermaid 다이어그램 문자열 반환.
+
+        Args:
+            autonomous: True이면 AutonomousGraph, False이면 기본 그래프
+
+        Returns:
+            Mermaid 다이어그램 문자열 또는 None
+        """
+        graph_to_visualize = None
+        
+        if autonomous and self._autonomous_graph:
+            graph_to_visualize = self._autonomous_graph
+        elif self._graph:
+            graph_to_visualize = self._graph
+        
+        if not graph_to_visualize:
+            return None
+
+        try:
+            return graph_to_visualize.get_graph().draw_mermaid()
+        except Exception as e:
+            logger.warning(f"[{self._session_id}] Could not generate mermaid diagram: {e}")
             return None
 
     def __repr__(self) -> str:
