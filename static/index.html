@@ -114,6 +114,7 @@
                     <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">Logs</button>
                     <button class="tab-btn" data-tab="storage" onclick="switchTab('storage')">Storage</button>
                     <button class="tab-btn" data-tab="batch" onclick="switchTab('batch')">Batch</button>
+                    <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
                 </div>
 
                 <!-- Tab Content -->
@@ -344,6 +345,32 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Settings Tab -->
+                    <div class="tab-pane" id="settings-tab">
+                        <div class="settings-panel">
+                            <div class="settings-header">
+                                <h3>Settings</h3>
+                                <div class="settings-actions">
+                                    <button class="btn btn-sm" onclick="exportConfigs()">Export</button>
+                                    <button class="btn btn-sm" onclick="showImportConfigModal()">Import</button>
+                                    <button class="btn btn-sm" onclick="loadConfigs()">Refresh</button>
+                                </div>
+                            </div>
+                            <div class="settings-content">
+                                <div class="settings-sidebar">
+                                    <div class="settings-categories" id="settings-categories">
+                                        <!-- Categories will be loaded dynamically -->
+                                    </div>
+                                </div>
+                                <div class="settings-main">
+                                    <div class="config-list" id="config-list">
+                                        <div class="loading">Loading configurations...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>
@@ -438,6 +465,44 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="hideDeleteSessionModal()">Cancel</button>
                     <button class="btn btn-danger" onclick="confirmDeleteSession()">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Edit Modal -->
+        <div class="modal-overlay hidden" id="config-edit-modal">
+            <div class="modal modal-lg">
+                <div class="modal-header">
+                    <h3 id="config-edit-title">Edit Configuration</h3>
+                    <button class="btn-close" onclick="hideConfigEditModal()">×</button>
+                </div>
+                <div class="modal-body" id="config-edit-body">
+                    <!-- Config form will be rendered dynamically -->
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="resetConfigToDefaults()">Reset to Defaults</button>
+                    <button class="btn btn-secondary" onclick="hideConfigEditModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveConfig()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Import Modal -->
+        <div class="modal-overlay hidden" id="config-import-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>Import Configurations</h3>
+                    <button class="btn-close" onclick="hideImportConfigModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="config-import-data">Paste exported config JSON:</label>
+                        <textarea id="config-import-data" rows="10" placeholder='{"discord": {...}, "slack": {...}}'></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="hideImportConfigModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="importConfigs()">Import</button>
                 </div>
             </div>
         </div>

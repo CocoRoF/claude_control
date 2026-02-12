@@ -13,7 +13,9 @@ from fastapi.templating import Jinja2Templates
 from controller.claude_controller import router as claude_router
 from controller.command_controller import router as command_router, get_prompts_list
 from controller.agent_controller import router as agent_router, agent_manager
+from controller.config_controller import router as config_router
 from service.redis.redis_client import RedisClient, get_redis_client
+from service.config import get_config_manager, ConfigManager
 from service.pod.pod_info import init_pod_info, get_pod_info
 from service.middleware.session_router import SessionRoutingMiddleware
 from service.proxy.internal_proxy import get_internal_proxy
@@ -139,6 +141,17 @@ async def lifespan(app: FastAPI):
     # Inject Redis client into AgentSessionManager
     agent_manager.set_redis_client(redis_client)
 
+    # Initialize Config Manager
+    print_step_banner("CONFIG", "CONFIG MANAGER", "Loading configurations...")
+    config_manager = get_config_manager()
+    app.state.config_manager = config_manager
+    registered_configs = config_manager.get_registered_config_classes()
+    logger.info(f"   - Registered Configs: {len(registered_configs)}")
+    for config_name, config_class in registered_configs.items():
+        # Load (and create if missing) each config
+        config_manager.load_config(config_class)
+        logger.info(f"     - {config_name}")
+
     # Auto-load MCP configs and tools
     print_step_banner("MCP", "MCP LOADER", "Loading MCP configs and tools...")
     mcp_loader = MCPLoader()
@@ -249,6 +262,7 @@ async def redis_stats():
 app.include_router(claude_router)
 app.include_router(command_router)
 app.include_router(agent_router)  # LangGraph agent sessions
+app.include_router(config_router)  # Configuration management
 
 # Mount static files for Web UI Dashboard
 static_dir = Path(__file__).parent / "static"
