@@ -379,23 +379,29 @@
         { gx: 16.8, gz: 3.2, type: 'park', name: 'patchGrass', rotation: Math.PI / 2 },
 
         // =============== SMALL GARDEN A (X=6-7, Z=6-7) ===============
-        { gx: 6.3, gz: 6.3, type: 'park', name: 'tree', rotation: 0 },
-        { gx: 7.2, gz: 6.5, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 4, y: 0.1 },
-        { gx: 6.5, gz: 7.2, type: 'park', name: 'rockFlatGrass', rotation: 0 },
+        { gx: 5.8, gz: 5.8, type: 'park', name: 'tree', rotation: 0 },
+        { gx: 7.1, gz: 6.1, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 4, y: 0.1 },
+        { gx: 6.2, gz: 7.0, type: 'park', name: 'rockFlatGrass', rotation: 0 },
+        { gx: 6.7, gz: 6.9, type: 'park', name: 'rockFlatGrass', rotation: 36},
 
         // =============== SMALL GARDEN B (X=0-1, Z=15-16) ===============
         { gx: 0.3, gz: 15.3, type: 'park', name: 'treeTall', rotation: Math.PI / 6 },
-        { gx: 1.5, gz: 15.5, type: 'park', name: 'patchGrass', rotation: 0 },
-        { gx: 0.5, gz: 16.5, type: 'park', name: 'rockA', rotation: Math.PI / 2 },
-        { gx: 1.2, gz: 16.2, type: 'park', name: 'grass', rotation: -Math.PI / 4 },
+        { gx: 1, gz: 15.5, type: 'park', name: 'patchGrass', rotation: 0, y: 0.1 },
+        { gx: 0.5, gz: 16, type: 'park', name: 'rockA', rotation: Math.PI / 2 },
+        { gx: 1, gz: 16.1, type: 'park', name: 'grass', rotation: -Math.PI / 4, y: 0.2 },
+        { gx: 1.2, gz: 16.3, type: 'park', name: 'grass', rotation: -Math.PI / 3, y: 0.2 },
+        { gx: 1.2, gz: 16.1, type: 'park', name: 'grass', rotation: -Math.PI / 1, y: 0.2 },
+        { gx: 1, gz: 16.2, type: 'park', name: 'grass', rotation: -Math.PI / 5, y: 0.2 },
+        { gx: 1, gz: 16.4, type: 'park', name: 'grass', rotation: -Math.PI / 6, y: 0.2 },
+        { gx: 1, gz: 16.1, type: 'park', name: 'grass', rotation: -Math.PI / 7, y: 0.2 },
         { gx: 0.8, gz: 15.8, type: 'park', name: 'signpostSingle', rotation: Math.PI },
 
         // =============== SMALL GARDEN C (X=17-20, Z=18-19) ===============
         { gx: 17.5, gz: 18.3, type: 'park', name: 'treeAutumn', rotation: 0 },
         { gx: 19, gz: 18.5, type: 'park', name: 'tree', rotation: Math.PI / 3 },
         { gx: 20, gz: 18.2, type: 'park', name: 'treeTall', rotation: -Math.PI / 4 },
-        { gx: 18, gz: 19.3, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 6, y: 0.1 },
-        { gx: 19.5, gz: 19.5, type: 'park', name: 'rockB', rotation: 0 },
+        { gx: 18, gz: 18.8, type: 'park', name: 'patchGrassLarge', rotation: Math.PI / 6, y: 0.1 },
+        { gx: 19.5, gz: 19, type: 'park', name: 'rockB', rotation: 0 },
         { gx: 17.3, gz: 19, type: 'park', name: 'grass', rotation: Math.PI / 2 },
         { gx: 20, gz: 19.2, type: 'park', name: 'treeAutumnTall', rotation: Math.PI / 5 },
 
