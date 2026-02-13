@@ -56,13 +56,17 @@
     </script>
 
     <!-- Server-side rendered initial state -->
+    <script id="initial-sessions" type="application/json">{{ initial_sessions | tojson | safe }}</script>
+    <script id="initial-prompts" type="application/json">{{ initial_prompts | tojson | safe }}</script>
+    <script id="initial-health" type="application/json">{{ initial_health | tojson | safe }}</script>
+    <script id="initial-stats" type="application/json">{{ initial_stats | tojson | safe }}</script>
     <script>
         // Pre-rendered data from server (SSR)
         window.__INITIAL_STATE__ = {
-            sessions: {{ initial_sessions | tojson | safe }},
-            prompts: {{ initial_prompts | tojson | safe }},
-            health: {{ initial_health | tojson | safe }},
-            stats: {{ initial_stats | tojson | safe }}
+            sessions: JSON.parse(document.getElementById('initial-sessions').textContent),
+            prompts: JSON.parse(document.getElementById('initial-prompts').textContent),
+            health: JSON.parse(document.getElementById('initial-health').textContent),
+            stats: JSON.parse(document.getElementById('initial-stats').textContent)
         };
         console.log('[SSR] Initial state loaded:', window.__INITIAL_STATE__);
     </script>

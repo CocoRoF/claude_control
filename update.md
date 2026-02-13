@@ -110,7 +110,7 @@ GET /api/command/stats
 ## 3. 웹 UI 대시보드 (Web UI Dashboard)
 
 ### 새로운 파일
-- `static/index.html` - 대시보드 HTML
+- `templates/index.html` - 대시보드 HTML (Jinja2 템플릿, SSR 지원)
 - `static/style.css` - 스타일시트
 - `static/app.js` - JavaScript 애플리케이션
 
@@ -172,7 +172,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 ```python
 @app.get("/dashboard")
 async def dashboard():
-    return FileResponse("static/index.html")
+    return templates.TemplateResponse("index.html", {...})
 ```
 
 ---
