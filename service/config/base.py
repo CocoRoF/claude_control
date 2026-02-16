@@ -43,6 +43,7 @@ class ConfigField:
     max_value: Optional[float] = None  # For NUMBER
     pattern: Optional[str] = None  # Regex pattern for validation
     group: str = "general"  # Group name for UI organization
+    secure: bool = False  # If True, field is masked with show/hide toggle in UI
 
 
 # Registry for all config classes
@@ -279,7 +280,8 @@ class BaseConfig(ABC):
                     "min": f.min_value,
                     "max": f.max_value,
                     "pattern": f.pattern,
-                    "group": f.group
+                    "group": f.group,
+                    "secure": f.secure
                 }
                 for f in cls.get_fields_metadata()
             ]
