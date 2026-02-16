@@ -15,7 +15,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
-from .base import BaseConfig, get_registered_configs
+from service.config.base import BaseConfig, get_registered_configs
 
 logger = getLogger(__name__)
 

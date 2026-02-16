@@ -19,7 +19,6 @@ import pkgutil
 from logging import getLogger
 from pathlib import Path
 
-
 def _discover_configs():
     """
     Automatically discover and import all config modules

@@ -9,18 +9,18 @@ This module provides:
 See sub_config/README.md for the config file organization policy.
 """
 
-from .base import BaseConfig, ConfigField
-from .manager import ConfigManager, get_config_manager
+from service.config.base import BaseConfig, ConfigField
+from service.config.manager import ConfigManager, get_config_manager
 
 # Auto-discover all configs in sub_config/ subdirectories.
 # This import triggers the discovery mechanism which walks through
 # sub_config/<category>/*_config.py and registers each @register_config class.
-from . import sub_config  # noqa: F401
+import service.config.sub_config  # noqa: F401
 
 # Re-export individual configs for backward compatibility
-from .sub_config.channels.discord_config import DiscordConfig
-from .sub_config.channels.slack_config import SlackConfig
-from .sub_config.channels.teams_config import TeamsConfig
+from service.config.sub_config.channels.discord_config import DiscordConfig
+from service.config.sub_config.channels.slack_config import SlackConfig
+from service.config.sub_config.channels.teams_config import TeamsConfig
 
 __all__ = [
     'BaseConfig',

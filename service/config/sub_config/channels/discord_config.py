@@ -8,7 +8,7 @@ Allows users to interact with Claude sessions via Discord messages.
 from dataclasses import dataclass, field
 from typing import List
 
-from ...base import BaseConfig, ConfigField, FieldType, register_config
+from service.config.base import BaseConfig, ConfigField, FieldType, register_config
 
 
 @register_config
