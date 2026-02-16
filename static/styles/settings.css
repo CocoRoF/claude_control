@@ -233,13 +233,68 @@
 .config-field {
     display: flex;
     flex-direction: column;
+    gap: 8px;
+}
+
+.config-field-label-group {
+    display: flex;
+    align-items: center;
     gap: 6px;
 }
 
-.config-field label {
+.config-field-label-group label {
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--text-primary);
+}
+
+.config-field-hint {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    cursor: help;
+    flex-shrink: 0;
+    transition: color var(--transition-fast);
+}
+
+.config-field-hint:hover {
+    color: var(--text-secondary);
+}
+
+.config-field-hint:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    padding: 8px 12px;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-subtle);
+    white-space: normal;
+    width: max-content;
+    max-width: 280px;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: var(--shadow-md);
+}
+
+.config-field-hint:hover::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--border-subtle);
+    z-index: 101;
+    pointer-events: none;
 }
 
 .config-field input,
@@ -253,6 +308,18 @@
     color: var(--text-primary);
     font-size: 0.875rem;
     transition: border-color var(--transition-fast);
+}
+
+/* Hide number input spinners */
+.config-field input[type="number"]::-webkit-outer-spin-button,
+.config-field input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.config-field input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 .config-field input:focus,
@@ -271,12 +338,13 @@
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
 }
 
-.field-description {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    line-height: 1.4;
+.config-field-toggle .config-field-label-group {
+    flex: 1;
+    min-width: 0;
 }
 
 .field-required {

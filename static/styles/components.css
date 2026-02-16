@@ -604,15 +604,25 @@ input[type="number"].styled-number {
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
     background: none;
     border: none;
+    border-radius: 4px;
     cursor: pointer;
-    padding: 4px;
-    font-size: 1rem;
-    opacity: 0.6;
-    transition: opacity var(--transition-fast);
+    padding: 0;
+    color: var(--text-muted);
+    transition: color var(--transition-fast), background-color var(--transition-fast);
 }
 
 .password-field .toggle-password:hover {
-    opacity: 1;
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+}
+
+.password-field .toggle-password svg.hidden {
+    display: none;
 }
