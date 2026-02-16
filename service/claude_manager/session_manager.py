@@ -4,9 +4,9 @@ Claude Session Manager
 Uses Redis as the true source for multi-pod environment support.
 Local processes are managed in memory, session metadata is stored in Redis.
 """
-import logging
 import os
 import uuid
+from logging import getLogger
 from typing import Dict, Optional, List
 
 from service.claude_manager.process_manager import ClaudeProcess
@@ -21,7 +21,7 @@ from service.redis.redis_client import RedisClient, get_redis_client
 from service.pod.pod_info import get_pod_info
 from service.logging.session_logger import get_session_logger, remove_session_logger
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 def is_redis_enabled() -> bool:

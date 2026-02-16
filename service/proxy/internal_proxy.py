@@ -3,12 +3,12 @@ Internal Proxy Client
 
 Proxy client for forwarding requests to other Pods in multi-pod environments
 """
-import logging
+from logging import getLogger
 from typing import Optional, Dict, Any, Tuple
 import httpx
 from fastapi import Request, Response
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Proxy request timeout (seconds)
 PROXY_TIMEOUT = 60.0

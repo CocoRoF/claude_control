@@ -32,7 +32,7 @@ LangGraph의 CompiledStateGraph로 래핑하여 상태 관리 기능을 제공�
 """
 
 import asyncio
-import logging
+from logging import getLogger
 import time
 import uuid
 from datetime import datetime
@@ -84,7 +84,7 @@ def _get_autonomous_graph_class():
         _autonomous_graph_module = ag
     return _autonomous_graph_module.AutonomousGraph
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 # ============================================================================
@@ -534,19 +534,19 @@ class AgentSession:
         - Hard: TODO 생성 -> 개별 실행 -> 검토 -> 최종 답변
         """
         AutonomousGraph = _get_autonomous_graph_class()
-        
+
         autonomous_graph_builder = AutonomousGraph(
             model=self._model,
             session_id=self._session_id,
             enable_checkpointing=self._enable_checkpointing,
             max_review_retries=3,
         )
-        
+
         self._autonomous_graph = autonomous_graph_builder.build()
-        
+
         # 기본 그래프도 빌드 (호환성)
         self._build_simple_graph()
-        
+
         logger.info(f"[{self._session_id}] AutonomousGraph built for autonomous execution")
 
     def _build_simple_graph(self):
@@ -820,10 +820,10 @@ class AgentSession:
             if self._autonomous and self._autonomous_graph:
                 result = await self._invoke_autonomous(input_text, config, **kwargs)
                 duration_ms = int((time.time() - start_time) * 1000)
-                
+
                 final_output = result.get("final_answer", "") or result.get("answer", "")
                 has_error = bool(result.get("error"))
-                
+
                 # 로깅: 그래프 실행 완료
                 if session_logger:
                     session_logger.log_graph_execution_complete(
@@ -833,13 +833,13 @@ class AgentSession:
                         total_duration_ms=duration_ms,
                         stop_reason="completed" if not has_error else result.get("error")
                     )
-                
+
                 if has_error:
                     self._error_message = result["error"]
                     return f"Error: {result['error']}"
-                
+
                 return final_output
-            
+
             # Non-autonomous 모드: 기존 simple graph 사용
             initial_state: AgentState = {
                 "messages": [HumanMessage(content=input_text)],
@@ -927,9 +927,9 @@ class AgentSession:
 
         # 그래프 실행
         result = await self._autonomous_graph.ainvoke(initial_state, config)
-        
+
         self._status = SessionStatus.RUNNING
-        
+
         return result
 
     async def _astream_autonomous(
@@ -1284,12 +1284,12 @@ class AgentSession:
             PNG 이미지 바이트 또는 None
         """
         graph_to_visualize = None
-        
+
         if autonomous and self._autonomous_graph:
             graph_to_visualize = self._autonomous_graph
         elif self._graph:
             graph_to_visualize = self._graph
-        
+
         if not graph_to_visualize:
             return None
 
@@ -1310,12 +1310,12 @@ class AgentSession:
             Mermaid 다이어그램 문자열 또는 None
         """
         graph_to_visualize = None
-        
+
         if autonomous and self._autonomous_graph:
             graph_to_visualize = self._autonomous_graph
         elif self._graph:
             graph_to_visualize = self._graph
-        
+
         if not graph_to_visualize:
             return None
 

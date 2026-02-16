@@ -17,10 +17,10 @@ Usage:
 import asyncio
 import importlib.util
 import json
-import logging
 import os
 import re
 import sys
+from logging import getLogger
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
@@ -32,7 +32,7 @@ from service.claude_manager.models import (
     MCPServerConfig
 )
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Global MCP config storage
 _global_mcp_config: Optional[MCPConfig] = None

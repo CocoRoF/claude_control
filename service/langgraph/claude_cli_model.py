@@ -24,7 +24,7 @@ LangGraph의 상태 관리 기능을 통합합니다.
 
 import asyncio
 import json
-import logging
+from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, AsyncIterator
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -50,7 +50,7 @@ from service.claude_manager.process_manager import ClaudeProcess
 from service.claude_manager.models import MCPConfig
 from service.claude_manager.constants import CLAUDE_DEFAULT_TIMEOUT
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class ClaudeCLIChatModel(BaseChatModel):

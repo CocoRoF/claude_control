@@ -5,13 +5,13 @@ Parses --output-format stream-json output from Claude CLI.
 Provides structured events for tool usage, assistant messages, and results.
 """
 import json
-import logging
+from logging import getLogger
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, List, Any, Callable
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class StreamEventType(str, Enum):

@@ -5,7 +5,7 @@ Per-session logging system for Claude Control.
 Each session gets its own log file in the logs/ directory.
 """
 import json
-import logging
+from logging import getLogger
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -14,7 +14,7 @@ from threading import Lock
 
 from service.utils.utils import now_kst, format_kst
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class LogLevel(str, Enum):

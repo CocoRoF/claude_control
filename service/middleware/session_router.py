@@ -6,7 +6,7 @@ Proxies to the appropriate Pod if session is on a different Pod
 """
 import os
 import re
-import logging
+from logging import getLogger
 from typing import Optional, Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -16,7 +16,7 @@ from service.redis.redis_client import RedisClient
 from service.pod.pod_info import get_pod_info, PodInfo
 from service.proxy.internal_proxy import get_internal_proxy, PROXY_HEADER
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 def is_redis_enabled() -> bool:

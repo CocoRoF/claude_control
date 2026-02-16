@@ -8,11 +8,11 @@ Uses --output-format stream-json for real-time tool usage logging.
 """
 import asyncio
 import json
-import logging
 import os
 import re
 import shutil
 import time
+from logging import getLogger
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Callable
 from datetime import datetime
@@ -43,7 +43,7 @@ from service.claude_manager.stream_parser import (
 from service.logging.session_logger import get_session_logger
 from service.utils.utils import now_kst
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class ClaudeProcess:

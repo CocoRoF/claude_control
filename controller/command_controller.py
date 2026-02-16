@@ -5,7 +5,7 @@ Provides batch command capability for multiple sessions
 and session monitoring endpoints.
 """
 import asyncio
-import logging
+from logging import getLogger
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -24,7 +24,7 @@ from service.logging.session_logger import (
     LogLevel
 )
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api/command", tags=["command"])

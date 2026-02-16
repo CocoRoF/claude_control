@@ -29,7 +29,7 @@ AgentSession 전용 메서드를 추가합니다.
     sessions = manager.list_sessions()  # SessionInfo 리스트 반환
 """
 
-import logging
+from logging import getLogger
 from typing import Dict, List, Optional
 
 from service.claude_manager.session_manager import SessionManager, is_redis_enabled, merge_mcp_configs
@@ -47,7 +47,7 @@ from service.logging.session_logger import get_session_logger, remove_session_lo
 
 from service.langgraph.agent_session import AgentSession
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class AgentSessionManager(SessionManager):

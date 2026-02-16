@@ -33,11 +33,11 @@ Example:
 """
 import asyncio
 import json
-import logging
+from logging import getLogger
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Check if MCP SDK is installed
 try:

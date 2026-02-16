@@ -3,15 +3,15 @@ Claude CLI Discovery
 
 Utilities for finding and configuring Claude CLI (Node.js based).
 """
-import logging
 import os
 import shutil
+from logging import getLogger
 from pathlib import Path
 from typing import Optional, List
 
 from service.claude_manager.platform_utils import IS_WINDOWS, IS_MACOS, IS_LINUX
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class ClaudeNodeConfig:

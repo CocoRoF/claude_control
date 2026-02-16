@@ -11,7 +11,7 @@ Provides REST API endpoints for managing configurations:
 - POST /api/config/import - Import configs
 """
 
-import logging
+from logging import getLogger
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Body
@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from service.config import ConfigManager, get_config_manager
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 

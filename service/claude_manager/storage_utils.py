@@ -4,7 +4,7 @@ Storage Utilities
 Utilities for managing session storage, including gitignore pattern filtering.
 """
 import fnmatch
-import logging
+from logging import getLogger
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -17,7 +17,7 @@ except ImportError:
     pathspec = None
     PATHSPEC_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Default ignore patterns for storage file listing
 # These patterns are always applied regardless of .gitignore

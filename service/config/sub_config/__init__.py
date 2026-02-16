@@ -16,6 +16,7 @@ the config class is automatically registered in the global registry.
 
 import importlib
 import pkgutil
+from logging import getLogger
 from pathlib import Path
 
 
@@ -47,8 +48,7 @@ def _discover_configs():
                 try:
                     importlib.import_module(f"{category_package}.{module_info.name}")
                 except ImportError as e:
-                    import logging
-                    logging.getLogger(__name__).warning(
+                    getLogger(__name__).warning(
                         f"Failed to import config module {category_package}.{module_info.name}: {e}"
                     )
 

@@ -10,11 +10,11 @@ Works automatically without environment variable settings:
 """
 import os
 import socket
-import logging
+from logging import getLogger
 from typing import Optional, List
 from dataclasses import dataclass
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 @dataclass

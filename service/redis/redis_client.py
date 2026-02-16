@@ -6,11 +6,11 @@ In multi-pod environments, Redis acts as the source of truth
 """
 import os
 import json
-import logging
+from logging import getLogger
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Check if Redis connection is available
 import redis

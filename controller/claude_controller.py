@@ -7,7 +7,7 @@ Includes SSE streaming for real-time execution logs.
 import re
 import json
 import asyncio
-import logging
+from logging import getLogger
 import uuid
 from typing import List, AsyncGenerator
 from datetime import datetime
@@ -40,7 +40,7 @@ from service.claude_manager.session_manager import get_session_manager
 from service.claude_manager.stream_parser import StreamEvent, StreamEventType
 from service.logging.session_logger import get_session_logger
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])

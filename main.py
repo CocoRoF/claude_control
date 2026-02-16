@@ -1,7 +1,7 @@
 import os
 import sys
 import asyncio
-import logging
+from logging import basicConfig, getLogger, INFO
 from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -46,11 +46,11 @@ if github_token:
     print("✅ GitHub CLI configured with GITHUB_TOKEN")
 
 # Logging configuration
-logging.basicConfig(
-    level=logging.INFO,
+basicConfig(
+    level=INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 def print_claude_control_logo():

@@ -9,15 +9,15 @@ Handles:
 """
 
 import json
-import logging
 import os
+from logging import getLogger
 from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
 from .base import BaseConfig, get_registered_configs
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 T = TypeVar('T', bound=BaseConfig)
 

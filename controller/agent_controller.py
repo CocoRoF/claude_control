@@ -8,7 +8,7 @@ AgentSession(CompiledStateGraph) 기반 세션을 관리합니다.
 AgentSession API:   /api/agents (primary)
 Legacy Session API: /api/sessions (deprecated, backward compatibility)
 """
-import logging
+from logging import getLogger
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
@@ -37,7 +37,7 @@ from service.langgraph import (
 )
 from service.logging.session_logger import get_session_logger
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -475,7 +475,7 @@ async def execute_autonomous(
 ):
     """
     Execute a task autonomously using the new difficulty-based AutonomousGraph.
-    
+
     난이도 기반 자율 실행:
     - EASY: 바로 답변
     - MEDIUM: 답변 + 검토
@@ -483,7 +483,7 @@ async def execute_autonomous(
     """
     import time
     start_time = time.time()
-    
+
     agent = agent_manager.get_agent(session_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"AgentSession not found: {session_id}")
@@ -516,33 +516,33 @@ async def execute_autonomous(
             max_iterations=request.max_iterations or agent.autonomous_max_iterations,
         ):
             node_count += 1
-            
+
             # 이벤트에서 노드 정보 추출 및 로깅
             if isinstance(event, dict):
                 for node_name, node_result in event.items():
                     if node_name.startswith("__"):
                         continue
-                    
+
                     # 노드 결과에서 출력 추출
                     if isinstance(node_result, dict):
                         output = (
-                            node_result.get("final_answer") or 
-                            node_result.get("answer") or 
+                            node_result.get("final_answer") or
+                            node_result.get("answer") or
                             node_result.get("last_output") or
                             node_result.get("review_feedback")
                         )
                         if output:
                             all_outputs.append(f"[{node_name}] {output[:500]}")
-                        
+
                         # 최종 결과 저장
                         if node_result.get("is_complete") or node_result.get("final_answer"):
                             final_result = node_result
-                    
+
                     logger.debug(f"[{session_id}] Node: {node_name}")
 
         # 최종 결과 추출
         duration_ms = int((time.time() - start_time) * 1000)
-        
+
         if final_result:
             final_output = (
                 final_result.get("final_answer") or
@@ -590,7 +590,7 @@ async def execute_autonomous(
         logger.error(f"❌ Autonomous execution failed: {e}", exc_info=True)
         if session_logger:
             session_logger.error(f"Autonomous execution failed: {str(e)}")
-        
+
         return AutonomousExecuteResponse(
             success=False,
             session_id=session_id,
@@ -611,7 +611,7 @@ async def stop_autonomous_execution(
 ):
     """
     Stop the autonomous execution loop.
-    
+
     Note: 새로운 AutonomousGraph는 동기 실행이므로 중간 중단이 제한적입니다.
     실행 중인 요청을 취소하려면 HTTP 요청 자체를 취소하세요.
     """
@@ -634,7 +634,7 @@ async def get_autonomous_status(
 ):
     """
     Get the current autonomous execution status.
-    
+
     AutonomousGraph는 동기 실행이므로 실행 중일 때는
     HTTP 요청이 블로킹되어 이 엔드포인트에 접근할 수 없습니다.
     """

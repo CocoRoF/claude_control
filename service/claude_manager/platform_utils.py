@@ -4,17 +4,17 @@ Platform Utilities
 Cross-platform utilities for process and storage management.
 """
 import asyncio
-import logging
 import os
 import platform
 import subprocess as sp
 import tempfile
+from logging import getLogger
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 
 from service.claude_manager.constants import STDIO_BUFFER_LIMIT
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # Platform detection
 IS_WINDOWS = platform.system() == 'Windows'
