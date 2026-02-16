@@ -19,6 +19,7 @@ import service.config.sub_config  # noqa: F401
 
 # Re-export individual configs for backward compatibility
 from service.config.sub_config.channels.discord_config import DiscordConfig
+from service.config.sub_config.channels.kakao_config import KakaoConfig
 from service.config.sub_config.channels.slack_config import SlackConfig
 from service.config.sub_config.channels.teams_config import TeamsConfig
 
@@ -28,6 +29,7 @@ __all__ = [
     'ConfigManager',
     'get_config_manager',
     'DiscordConfig',
+    'KakaoConfig',
     'SlackConfig',
     'TeamsConfig'
 ]
