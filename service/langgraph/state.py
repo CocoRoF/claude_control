@@ -209,6 +209,10 @@ class AutonomousState(TypedDict, total=False):
     current_step: str
     last_output: Optional[str]
 
+    # -- Iteration bookkeeping (global across all paths) --------------------
+    iteration: int
+    max_iterations: int
+
     # -- Difficulty ---------------------------------------------------------
     difficulty: Optional[str]  # Difficulty enum value
 
@@ -279,6 +283,8 @@ def make_initial_agent_state(
 
 def make_initial_autonomous_state(
     input_text: str,
+    *,
+    max_iterations: int = 50,
     **extra_metadata: Any,
 ) -> AutonomousState:
     """Create a well-formed initial AutonomousState."""
@@ -287,6 +293,8 @@ def make_initial_autonomous_state(
         "messages": [],
         "current_step": "start",
         "last_output": None,
+        "iteration": 0,
+        "max_iterations": max_iterations,
         "difficulty": None,
         "answer": None,
         "review_result": None,

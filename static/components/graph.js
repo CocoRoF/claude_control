@@ -63,20 +63,25 @@ function computeSimpleLayout(nodes, edges) {
 }
 
 /**
- * Autonomous graph: multi-path branching layout.
+ * Autonomous graph: multi-path branching layout with resilience nodes.
  *
- *  Layer 0: START
- *  Layer 1: classify_difficulty
- *  Layer 2: direct_answer | answer | create_todos
- *  Layer 3: __end__       | review | execute_todo
- *  Layer 4:               | __end__| check_progress
- *  ...etc
+ * 28-node topology:
+ *   Common: START → memory_inject → guard_classify → classify → post_classify
+ *   Easy:   guard_direct → direct_answer → post_direct → END
+ *   Medium: guard_answer → answer → post_answer → guard_review → review
+ *           → post_review → iter_gate_medium (↻ guard_answer) → END
+ *   Hard:   guard_create_todos → create_todos → post_create_todos
+ *           → guard_execute → execute_todo → post_execute → check_progress
+ *           → iter_gate_hard (↻ guard_execute) → guard_final_review
+ *           → final_review → post_final_review → guard_final_answer
+ *           → final_answer → post_final_answer → END
  */
 function computeAutonomousLayout(nodes, edges) {
     const positions = {};
     const L = GRAPH_LAYOUT;
-    const colW = L.nodeWidth + L.horizontalGap;
-    const rowH = L.nodeHeight + L.verticalGap;
+    const colW = L.nodeWidth + L.horizontalGap;     // 260
+    const step = L.nodeHeight + 22;                  // 78 — compact row step
+    const branchGap = 100;                           // gap before columns branch
 
     // Three columns: easy(left), medium(center), hard(right)
     const colX = {
@@ -86,28 +91,52 @@ function computeAutonomousLayout(nodes, edges) {
     };
     const topCenter = (colX.easy + colX.hard) / 2;
 
-    // Row 0 — START
-    positions['__start__'] = { x: topCenter, y: L.padding };
-    // Row 1 — classify_difficulty
-    positions['classify_difficulty'] = { x: topCenter, y: L.padding + rowH };
+    // ── Common entry (centered) ──
+    let y = L.padding;
+    positions['__start__']           = { x: topCenter, y: y };  y += step;
+    positions['memory_inject']       = { x: topCenter, y: y };  y += step;
+    positions['guard_classify']      = { x: topCenter, y: y };  y += step;
+    positions['classify_difficulty'] = { x: topCenter, y: y };  y += step;
+    positions['post_classify']       = { x: topCenter, y: y };
 
-    // Easy column
-    positions['direct_answer'] = { x: colX.easy, y: L.padding + rowH * 2 };
+    const branchBase = y + branchGap;
 
-    // Medium column
-    positions['answer'] = { x: colX.medium, y: L.padding + rowH * 2 };
-    positions['review'] = { x: colX.medium, y: L.padding + rowH * 3 };
+    // ── Easy path (left column) ──
+    y = branchBase;
+    positions['guard_direct']  = { x: colX.easy, y: y };  y += step;
+    positions['direct_answer'] = { x: colX.easy, y: y };  y += step;
+    positions['post_direct']   = { x: colX.easy, y: y };
 
-    // Hard column
-    positions['create_todos'] = { x: colX.hard, y: L.padding + rowH * 2 };
-    positions['execute_todo'] = { x: colX.hard, y: L.padding + rowH * 3 };
-    positions['check_progress'] = { x: colX.hard, y: L.padding + rowH * 4 };
-    positions['final_review'] = { x: colX.hard, y: L.padding + rowH * 5 };
-    positions['final_answer'] = { x: colX.hard, y: L.padding + rowH * 6 };
+    // ── Medium path (center column) ──
+    y = branchBase;
+    positions['guard_answer']     = { x: colX.medium, y: y };  y += step;
+    positions['answer']           = { x: colX.medium, y: y };  y += step;
+    positions['post_answer']      = { x: colX.medium, y: y };  y += step;
+    positions['guard_review']     = { x: colX.medium, y: y };  y += step;
+    positions['review']           = { x: colX.medium, y: y };  y += step;
+    positions['post_review']      = { x: colX.medium, y: y };  y += step;
+    positions['iter_gate_medium'] = { x: colX.medium, y: y };
 
-    // END — bottom center
+    // ── Hard path (right column) ──
+    y = branchBase;
+    positions['guard_create_todos'] = { x: colX.hard, y: y };  y += step;
+    positions['create_todos']       = { x: colX.hard, y: y };  y += step;
+    positions['post_create_todos']  = { x: colX.hard, y: y };  y += step;
+    positions['guard_execute']      = { x: colX.hard, y: y };  y += step;
+    positions['execute_todo']       = { x: colX.hard, y: y };  y += step;
+    positions['post_execute']       = { x: colX.hard, y: y };  y += step;
+    positions['check_progress']     = { x: colX.hard, y: y };  y += step;
+    positions['iter_gate_hard']     = { x: colX.hard, y: y };  y += step;
+    positions['guard_final_review'] = { x: colX.hard, y: y };  y += step;
+    positions['final_review']       = { x: colX.hard, y: y };  y += step;
+    positions['post_final_review']  = { x: colX.hard, y: y };  y += step;
+    positions['guard_final_answer'] = { x: colX.hard, y: y };  y += step;
+    positions['final_answer']       = { x: colX.hard, y: y };  y += step;
+    positions['post_final_answer']  = { x: colX.hard, y: y };
+
+    // ── END — bottom center ──
     const maxY = Math.max(...Object.values(positions).map(p => p.y));
-    positions['__end__'] = { x: topCenter, y: maxY + rowH };
+    positions['__end__'] = { x: topCenter, y: maxY + branchGap };
 
     return positions;
 }
@@ -135,9 +164,8 @@ function renderGraph(containerEl, graphData) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'graph-svg');
     svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
-    svg.setAttribute('width', '100%');
-    svg.setAttribute('height', '100%');
-    svg.style.minHeight = `${svgH}px`;
+    svg.setAttribute('width', svgW);
+    svg.setAttribute('height', svgH);
 
     // Defs — arrowheads, filters
     svg.innerHTML = `
@@ -147,10 +175,20 @@ function renderGraph(containerEl, graphData) {
                 <path d="M0,0 L${L.arrowSize},${L.arrowSize / 2} L0,${L.arrowSize} Z"
                       fill="var(--graph-edge-color, #6b7280)" />
             </marker>
+            <marker id="arrow-normal-hover" markerWidth="${L.arrowSize}" markerHeight="${L.arrowSize}"
+                    refX="${L.arrowSize}" refY="${L.arrowSize / 2}" orient="auto">
+                <path d="M0,0 L${L.arrowSize},${L.arrowSize / 2} L0,${L.arrowSize} Z"
+                      fill="var(--text-primary, #fafafa)" />
+            </marker>
             <marker id="arrow-conditional" markerWidth="${L.arrowSize}" markerHeight="${L.arrowSize}"
                     refX="${L.arrowSize}" refY="${L.arrowSize / 2}" orient="auto">
                 <path d="M0,0 L${L.arrowSize},${L.arrowSize / 2} L0,${L.arrowSize} Z"
                       fill="var(--graph-cond-color, #f59e0b)" />
+            </marker>
+            <marker id="arrow-conditional-hover" markerWidth="${L.arrowSize}" markerHeight="${L.arrowSize}"
+                    refX="${L.arrowSize}" refY="${L.arrowSize / 2}" orient="auto">
+                <path d="M0,0 L${L.arrowSize},${L.arrowSize / 2} L0,${L.arrowSize} Z"
+                      fill="var(--text-primary, #fafafa)" />
             </marker>
             <filter id="node-shadow" x="-10%" y="-10%" width="130%" height="140%">
                 <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15" />
@@ -184,8 +222,13 @@ function renderGraph(containerEl, graphData) {
     wrapper.appendChild(svg);
     containerEl.appendChild(wrapper);
 
+    // Fit graph into viewport on initial render
+    requestAnimationFrame(() => {
+        fitGraphToViewport(wrapper, svg, svgW, svgH);
+    });
+
     // Add pan/zoom
-    initGraphPanZoom(wrapper, svg);
+    initGraphPanZoom(wrapper, svg, svgW, svgH);
 }
 
 /**
@@ -219,20 +262,25 @@ function renderNode(group, node, positions, L) {
         text.textContent = node.label;
         g.appendChild(text);
     } else {
+        // Determine dimensions — resilience nodes render smaller
+        const isRes = node.type === 'resilience';
+        const nw = isRes ? Math.round(L.nodeWidth * 0.78) : L.nodeWidth;   // 140 vs 180
+        const nh = isRes ? Math.round(L.nodeHeight * 0.80) : L.nodeHeight; // 45 vs 56
+
         // Rounded rectangle
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', pos.x - L.nodeWidth / 2);
-        rect.setAttribute('y', pos.y - L.nodeHeight / 2);
-        rect.setAttribute('width', L.nodeWidth);
-        rect.setAttribute('height', L.nodeHeight);
-        rect.setAttribute('rx', 12);
-        rect.setAttribute('ry', 12);
+        rect.setAttribute('x', pos.x - nw / 2);
+        rect.setAttribute('y', pos.y - nh / 2);
+        rect.setAttribute('width', nw);
+        rect.setAttribute('height', nh);
+        rect.setAttribute('rx', isRes ? 8 : 12);
+        rect.setAttribute('ry', isRes ? 8 : 12);
         rect.setAttribute('class', 'graph-node-shape');
         rect.setAttribute('filter', 'url(#node-shadow)');
         g.appendChild(rect);
 
         // Icon based on path
-        const iconX = pos.x - L.nodeWidth / 2 + 16;
+        const iconX = pos.x - nw / 2 + (isRes ? 12 : 16);
         const iconY = pos.y + 5;
         const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         icon.setAttribute('x', iconX);
@@ -242,7 +290,7 @@ function renderNode(group, node, positions, L) {
         g.appendChild(icon);
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', pos.x + 6);
+        text.setAttribute('x', pos.x + (isRes ? 2 : 6));
         text.setAttribute('y', pos.y + 5);
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('class', 'graph-node-label');
@@ -349,9 +397,19 @@ function renderEdge(group, edge, positions, L) {
 
 // ========== Edge Geometry Helpers ==========
 
+/** Return the actual rendered dimensions for a node. */
+function getNodeDims(node, L) {
+    if (!node) return { w: L.nodeWidth, h: L.nodeHeight };
+    if (node.type === 'start' || node.type === 'end') return { w: 0, h: 0 };
+    if (node.type === 'resilience') return { w: Math.round(L.nodeWidth * 0.78), h: Math.round(L.nodeHeight * 0.80) };
+    return { w: L.nodeWidth, h: L.nodeHeight };
+}
+
 function getEdgeEndpoints(src, tgt, edge, positions, L) {
     const srcNode = graphState.graphData.nodes.find(n => n.id === edge.source);
     const tgtNode = graphState.graphData.nodes.find(n => n.id === edge.target);
+    const srcDims = getNodeDims(srcNode, L);
+    const tgtDims = getNodeDims(tgtNode, L);
 
     let x1 = src.x, y1 = src.y, x2 = tgt.x, y2 = tgt.y;
 
@@ -359,13 +417,13 @@ function getEdgeEndpoints(src, tgt, edge, positions, L) {
     if (srcNode && (srcNode.type === 'start' || srcNode.type === 'end')) {
         y1 += L.startEndRadius;
     } else {
-        y1 += L.nodeHeight / 2;
+        y1 += srcDims.h / 2;
     }
 
     if (tgtNode && (tgtNode.type === 'start' || tgtNode.type === 'end')) {
         y2 -= L.startEndRadius;
     } else {
-        y2 -= L.nodeHeight / 2;
+        y2 -= tgtDims.h / 2;
     }
 
     // Horizontal edges (same row)
@@ -373,25 +431,19 @@ function getEdgeEndpoints(src, tgt, edge, positions, L) {
         y1 = src.y;
         y2 = tgt.y;
         if (src.x < tgt.x) {
-            x1 = src.x + L.nodeWidth / 2;
-            x2 = tgt.x - L.nodeWidth / 2;
+            x1 = src.x + srcDims.w / 2;
+            x2 = tgt.x - tgtDims.w / 2;
         } else {
-            x1 = src.x - L.nodeWidth / 2;
-            x2 = tgt.x + L.nodeWidth / 2;
+            x1 = src.x - srcDims.w / 2;
+            x2 = tgt.x + tgtDims.w / 2;
         }
     }
 
-    // Back edges (going up) — attach from sides
+    // Back edges (going up) — attach from left sides
     if (tgt.y < src.y) {
-        const srcRight = srcNode?.type === 'start' || srcNode?.type === 'end'
-            ? src.x + L.startEndRadius
-            : src.x + L.nodeWidth / 2;
-        const tgtRight = tgtNode?.type === 'start' || tgtNode?.type === 'end'
-            ? tgt.x + L.startEndRadius
-            : tgt.x + L.nodeWidth / 2;
-        x1 = src.x - L.nodeWidth / 2;
+        x1 = src.x - srcDims.w / 2;
         y1 = src.y;
-        x2 = tgt.x - L.nodeWidth / 2;
+        x2 = tgt.x - tgtDims.w / 2;
         y2 = tgt.y;
     }
 
@@ -445,6 +497,7 @@ function getNodeIcon(node) {
         context_guard: '🛡️',
         agent: '🤖',
         process_output: '⚙️',
+        // Core nodes
         classify_difficulty: '🔀',
         direct_answer: '⚡',
         answer: '💬',
@@ -454,11 +507,32 @@ function getNodeIcon(node) {
         check_progress: '📊',
         final_review: '✅',
         final_answer: '🎯',
+        // Resilience nodes
+        memory_inject: '🧠',
+        guard_classify: '🛡️',
+        guard_direct: '🛡️',
+        guard_answer: '🛡️',
+        guard_review: '🛡️',
+        guard_create_todos: '🛡️',
+        guard_execute: '🛡️',
+        guard_final_review: '🛡️',
+        guard_final_answer: '🛡️',
+        post_classify: '📌',
+        post_direct: '📌',
+        post_answer: '📌',
+        post_review: '📌',
+        post_create_todos: '📌',
+        post_execute: '📌',
+        post_final_review: '📌',
+        post_final_answer: '📌',
+        iter_gate_medium: '🚧',
+        iter_gate_hard: '🚧',
     };
     return icons[node.id] || '●';
 }
 
 function getPathClass(node) {
+    if (node.type === 'resilience') return 'graph-path--resilience';
     const pathMap = node.metadata?.path;
     if (pathMap === 'easy') return 'graph-path--easy';
     if (pathMap === 'medium') return 'graph-path--medium';
@@ -637,12 +711,53 @@ function renderNodeDetail(panel, node) {
 
 // ========== Pan/Zoom ==========
 
-function initGraphPanZoom(wrapper, svg) {
-    // Mouse wheel zoom
+/**
+ * Calculate scale and offset to fit the full graph inside the wrapper viewport.
+ */
+function fitGraphToViewport(wrapper, svg, svgW, svgH) {
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const vw = wrapperRect.width;
+    const vh = wrapperRect.height;
+    if (vw === 0 || vh === 0) return;
+
+    const scaleX = vw / svgW;
+    const scaleY = vh / svgH;
+    const scale = Math.min(scaleX, scaleY, 1); // don't upscale beyond 1
+
+    // Center the graph
+    const renderedW = svgW * scale;
+    const renderedH = svgH * scale;
+    const offsetX = (vw - renderedW) / 2;
+    const offsetY = (vh - renderedH) / 2;
+
+    graphState.svgScale = scale;
+    graphState.svgPan = { x: offsetX, y: offsetY };
+    applyGraphTransform(svg);
+}
+
+function initGraphPanZoom(wrapper, svg, svgW, svgH) {
+    // Store dimensions for reset
+    graphState._svgW = svgW;
+    graphState._svgH = svgH;
+    graphState._wrapper = wrapper;
+    graphState._svg = svg;
+
+    // Mouse wheel zoom (zoom toward cursor)
     wrapper.addEventListener('wheel', (e) => {
         e.preventDefault();
         const delta = e.deltaY > 0 ? -0.08 : 0.08;
-        graphState.svgScale = Math.max(0.3, Math.min(2.5, graphState.svgScale + delta));
+        const newScale = Math.max(0.15, Math.min(2.5, graphState.svgScale + delta));
+
+        // Zoom toward mouse position
+        const rect = wrapper.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const ratio = newScale / graphState.svgScale;
+        graphState.svgPan.x = mx - ratio * (mx - graphState.svgPan.x);
+        graphState.svgPan.y = my - ratio * (my - graphState.svgPan.y);
+        graphState.svgScale = newScale;
+
         applyGraphTransform(svg);
     }, { passive: false });
 
@@ -675,10 +790,13 @@ function applyGraphTransform(svg) {
 }
 
 function resetGraphView() {
-    graphState.svgPan = { x: 0, y: 0 };
-    graphState.svgScale = 1;
-    const svg = document.querySelector('.graph-svg');
-    if (svg) applyGraphTransform(svg);
+    const wrapper = graphState._wrapper;
+    const svg = graphState._svg;
+    const svgW = graphState._svgW;
+    const svgH = graphState._svgH;
+    if (wrapper && svg && svgW && svgH) {
+        fitGraphToViewport(wrapper, svg, svgW, svgH);
+    }
 }
 
 function zoomGraphIn() {

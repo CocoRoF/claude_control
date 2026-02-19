@@ -70,6 +70,7 @@ from service.langgraph.state import (
     AgentState,
     CompletionSignal,
     make_initial_agent_state,
+    make_initial_autonomous_state,
 )
 from service.langgraph.resilience_nodes import (
     completion_detect_node,
@@ -512,11 +513,11 @@ class AgentSession:
                 logger.error(f"[{self._session_id}] Failed to initialize model: {self._error_message}")
                 return False
 
-            # 3. Build StateGraph
-            self._build_graph()
-
-            # 4. Initialize memory manager
+            # 3. Initialize memory manager (before graph, so autonomous graph can use it)
             self._init_memory()
+
+            # 4. Build StateGraph
+            self._build_graph()
 
             self._initialized = True
             self._status = SessionStatus.RUNNING
@@ -553,7 +554,10 @@ class AgentSession:
         logger.debug(f"[{self._session_id}] StateGraph built (autonomous={self._autonomous})")
 
     def _build_autonomous_graph(self):
-        """Build difficulty-based AutonomousGraph.
+        """Build difficulty-based AutonomousGraph with full resilience.
+
+        Passes memory_manager and max_iterations so the autonomous graph
+        can use memory injection and enforce global iteration caps.
 
         Routes:
             - Easy: direct answer
@@ -568,6 +572,9 @@ class AgentSession:
             enable_checkpointing=self._enable_checkpointing,
             max_review_retries=3,
             storage_path=self.storage_path if hasattr(self, 'storage_path') else None,
+            memory_manager=self._memory_manager,
+            max_iterations=self._autonomous_max_iterations,
+            model_name=self._model_name,
         )
 
         self._autonomous_graph = autonomous_graph_builder.build()
@@ -981,13 +988,12 @@ class AgentSession:
         if not self._autonomous_graph:
             raise RuntimeError("AutonomousGraph not built")
 
-        # AutonomousGraph initial state
-        AutonomousGraph = _get_autonomous_graph_class()
-        autonomous_graph_builder = AutonomousGraph(
-            model=self._model,
-            session_id=self._session_id,
+        # Create initial state using centralized helper
+        initial_state = make_initial_autonomous_state(
+            input_text,
+            max_iterations=self._autonomous_max_iterations,
+            **kwargs,
         )
-        initial_state = autonomous_graph_builder.get_initial_state(input_text, **kwargs)
 
         # Execute graph
         result = await self._autonomous_graph.ainvoke(initial_state, config)
@@ -1015,13 +1021,12 @@ class AgentSession:
         if not self._autonomous_graph:
             raise RuntimeError("AutonomousGraph not built")
 
-        # AutonomousGraph initial state
-        AutonomousGraph = _get_autonomous_graph_class()
-        autonomous_graph_builder = AutonomousGraph(
-            model=self._model,
-            session_id=self._session_id,
+        # Create initial state using centralized helper
+        initial_state = make_initial_autonomous_state(
+            input_text,
+            max_iterations=self._autonomous_max_iterations,
+            **kwargs,
         )
-        initial_state = autonomous_graph_builder.get_initial_state(input_text, **kwargs)
 
         # Stream graph execution
         async for event in self._autonomous_graph.astream(initial_state, config):

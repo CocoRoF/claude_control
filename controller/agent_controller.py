@@ -1005,13 +1005,31 @@ def _build_simple_graph_structure(session_id: str, session_name: str) -> GraphSt
 
 
 def _build_autonomous_graph_structure(session_id: str, session_name: str) -> GraphStructure:
-    """Build the autonomous (difficulty-based) graph structure for visualization."""
+    """Build the enhanced autonomous graph structure for visualization.
+
+    Reflects the full 28-node resilience-enhanced topology with
+    memory_inject, context guards, post-model processors, and iteration gates.
+    """
     from service.prompt.sections import AutonomousPrompts
 
     nodes = [
         GraphNodeInfo(
             id="__start__", label="START", type="start",
             description="Entry point of the autonomous graph.",
+        ),
+        # -- Common entry --
+        GraphNodeInfo(
+            id="memory_inject", label="Memory Inject", type="resilience",
+            description=(
+                "Loads relevant long-term and short-term memory into state. "
+                "Records user input to transcript."
+            ),
+            metadata={"concern": "memory"},
+        ),
+        GraphNodeInfo(
+            id="guard_classify", label="Guard: Classify", type="resilience",
+            description="Checks context budget before difficulty classification.",
+            metadata={"concern": "context_guard"},
         ),
         GraphNodeInfo(
             id="classify_difficulty", label="Classify Difficulty", type="node",
@@ -1022,7 +1040,17 @@ def _build_autonomous_graph_structure(session_id: str, session_name: str) -> Gra
             prompt_template=AutonomousPrompts.classify_difficulty(),
             metadata={"outputs": ["easy", "medium", "hard"]},
         ),
-        # --- Easy path ---
+        GraphNodeInfo(
+            id="post_classify", label="Post: Classify", type="resilience",
+            description="Increments iteration counter and records transcript after classification.",
+            metadata={"concern": "post_model"},
+        ),
+        # -- Easy path --
+        GraphNodeInfo(
+            id="guard_direct", label="Guard: Direct", type="resilience",
+            description="Checks context budget before direct answer.",
+            metadata={"concern": "context_guard", "path": "easy"},
+        ),
         GraphNodeInfo(
             id="direct_answer", label="Direct Answer", type="node",
             description=(
@@ -1031,14 +1059,34 @@ def _build_autonomous_graph_structure(session_id: str, session_name: str) -> Gra
             ),
             metadata={"path": "easy"},
         ),
-        # --- Medium path ---
+        GraphNodeInfo(
+            id="post_direct", label="Post: Direct", type="resilience",
+            description="Completion signal detection and transcript recording for direct answer.",
+            metadata={"concern": "post_model", "path": "easy"},
+        ),
+        # -- Medium path --
+        GraphNodeInfo(
+            id="guard_answer", label="Guard: Answer", type="resilience",
+            description="Checks context budget before answer generation.",
+            metadata={"concern": "context_guard", "path": "medium"},
+        ),
         GraphNodeInfo(
             id="answer", label="Answer", type="node",
             description=(
                 "Generates an answer for medium-complexity tasks. "
-                "The answer will be reviewed for quality."
+                "Incorporates review feedback on retries."
             ),
             metadata={"path": "medium"},
+        ),
+        GraphNodeInfo(
+            id="post_answer", label="Post: Answer", type="resilience",
+            description="Iteration increment and transcript recording after answer generation.",
+            metadata={"concern": "post_model", "path": "medium"},
+        ),
+        GraphNodeInfo(
+            id="guard_review", label="Guard: Review", type="resilience",
+            description="Checks context budget before quality review.",
+            metadata={"concern": "context_guard", "path": "medium"},
         ),
         GraphNodeInfo(
             id="review", label="Review", type="node",
@@ -1049,41 +1097,96 @@ def _build_autonomous_graph_structure(session_id: str, session_name: str) -> Gra
             prompt_template=AutonomousPrompts.review(),
             metadata={"path": "medium", "max_retries": 3},
         ),
-        # --- Hard path ---
+        GraphNodeInfo(
+            id="post_review", label="Post: Review", type="resilience",
+            description="Completion signal detection and transcript recording after review.",
+            metadata={"concern": "post_model", "path": "medium"},
+        ),
+        GraphNodeInfo(
+            id="iter_gate_medium", label="Gate: Medium", type="resilience",
+            description=(
+                "Iteration gate for medium retry loop. Checks global iteration limit, "
+                "context budget, and completion signals before allowing retry."
+            ),
+            metadata={"concern": "iteration_gate", "path": "medium"},
+        ),
+        # -- Hard path --
+        GraphNodeInfo(
+            id="guard_create_todos", label="Guard: Todos", type="resilience",
+            description="Checks context budget before TODO creation.",
+            metadata={"concern": "context_guard", "path": "hard"},
+        ),
         GraphNodeInfo(
             id="create_todos", label="Create TODOs", type="node",
             description=(
                 "Task planner — decomposes a complex task into a structured "
-                "JSON list of TODO items with dependencies."
+                "JSON list of TODO items. Capped at 20 items."
             ),
             prompt_template=AutonomousPrompts.create_todos(),
-            metadata={"path": "hard"},
+            metadata={"path": "hard", "max_todos": 20},
+        ),
+        GraphNodeInfo(
+            id="post_create_todos", label="Post: Todos", type="resilience",
+            description="Iteration increment and transcript recording after TODO creation.",
+            metadata={"concern": "post_model", "path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="guard_execute", label="Guard: Execute", type="resilience",
+            description="Checks context budget before TODO execution.",
+            metadata={"concern": "context_guard", "path": "hard"},
         ),
         GraphNodeInfo(
             id="execute_todo", label="Execute TODO", type="node",
             description=(
-                "Executes a single TODO item from the plan, using context "
-                "from previously completed items."
+                "Executes a single TODO item from the plan. Uses budget-aware "
+                "compaction for previous results."
             ),
             prompt_template=AutonomousPrompts.execute_todo(),
             metadata={"path": "hard"},
         ),
         GraphNodeInfo(
+            id="post_execute", label="Post: Execute", type="resilience",
+            description="Completion signal detection and transcript recording after TODO execution.",
+            metadata={"concern": "post_model", "path": "hard"},
+        ),
+        GraphNodeInfo(
             id="check_progress", label="Check Progress", type="node",
             description=(
-                "Checks whether all TODO items are completed. "
-                "Routes to the next TODO or to the final review."
+                "Checks TODO completion progress — completed, failed, remaining counts."
             ),
             metadata={"path": "hard", "outputs": ["continue", "complete"]},
+        ),
+        GraphNodeInfo(
+            id="iter_gate_hard", label="Gate: Hard", type="resilience",
+            description=(
+                "Iteration gate for hard TODO loop. Checks global iteration limit, "
+                "context budget, and completion signals before next TODO."
+            ),
+            metadata={"concern": "iteration_gate", "path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="guard_final_review", label="Guard: Final Review", type="resilience",
+            description="Checks context budget before final review.",
+            metadata={"concern": "context_guard", "path": "hard"},
         ),
         GraphNodeInfo(
             id="final_review", label="Final Review", type="node",
             description=(
                 "Conducts a comprehensive review of all completed TODO items "
-                "to ensure the original request is fully addressed."
+                "with budget-aware result compaction."
             ),
             prompt_template=AutonomousPrompts.final_review(),
             metadata={"path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="post_final_review", label="Post: Final Review", type="resilience",
+            description="Completion signal detection and transcript recording after final review.",
+            metadata={"concern": "post_model", "path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="guard_final_answer", label="Guard: Final Answer", type="resilience",
+            description="Checks context budget before final answer synthesis.",
+            metadata={"concern": "context_guard", "path": "hard"},
         ),
         GraphNodeInfo(
             id="final_answer", label="Final Answer", type="node",
@@ -1095,63 +1198,120 @@ def _build_autonomous_graph_structure(session_id: str, session_name: str) -> Gra
             metadata={"path": "hard"},
         ),
         GraphNodeInfo(
+            id="post_final_answer", label="Post: Final Answer", type="resilience",
+            description="Completion signal detection and transcript recording for final answer.",
+            metadata={"concern": "post_model", "path": "hard"},
+        ),
+        GraphNodeInfo(
             id="__end__", label="END", type="end",
             description="Terminal state — autonomous execution is complete.",
         ),
     ]
 
     edges = [
-        # START -> classify
-        GraphEdgeInfo(source="__start__", target="classify_difficulty", label=""),
+        # -- Common entry --
+        GraphEdgeInfo(source="__start__", target="memory_inject", label=""),
+        GraphEdgeInfo(source="memory_inject", target="guard_classify", label=""),
+        GraphEdgeInfo(source="guard_classify", target="classify_difficulty", label=""),
+        GraphEdgeInfo(source="classify_difficulty", target="post_classify", label=""),
 
-        # classify -> [easy/medium/hard]  (conditional)
+        # post_classify → route by difficulty
         GraphEdgeInfo(
-            source="classify_difficulty", target="direct_answer",
+            source="post_classify", target="guard_direct",
             label="easy", type="conditional",
-            condition_map={"easy": "direct_answer", "medium": "answer", "hard": "create_todos"},
+            condition_map={"easy": "guard_direct", "medium": "guard_answer", "hard": "guard_create_todos", "end": "__end__"},
         ),
         GraphEdgeInfo(
-            source="classify_difficulty", target="answer",
+            source="post_classify", target="guard_answer",
             label="medium", type="conditional",
-            condition_map={"easy": "direct_answer", "medium": "answer", "hard": "create_todos"},
+            condition_map={"easy": "guard_direct", "medium": "guard_answer", "hard": "guard_create_todos", "end": "__end__"},
         ),
         GraphEdgeInfo(
-            source="classify_difficulty", target="create_todos",
+            source="post_classify", target="guard_create_todos",
             label="hard", type="conditional",
-            condition_map={"easy": "direct_answer", "medium": "answer", "hard": "create_todos"},
+            condition_map={"easy": "guard_direct", "medium": "guard_answer", "hard": "guard_create_todos", "end": "__end__"},
+        ),
+        GraphEdgeInfo(
+            source="post_classify", target="__end__",
+            label="end", type="conditional",
+            condition_map={"easy": "guard_direct", "medium": "guard_answer", "hard": "guard_create_todos", "end": "__end__"},
         ),
 
-        # Easy: direct_answer -> END
-        GraphEdgeInfo(source="direct_answer", target="__end__", label=""),
+        # -- Easy path --
+        GraphEdgeInfo(source="guard_direct", target="direct_answer", label=""),
+        GraphEdgeInfo(source="direct_answer", target="post_direct", label=""),
+        GraphEdgeInfo(source="post_direct", target="__end__", label=""),
 
-        # Medium: answer -> review, review -> [approved/retry]
-        GraphEdgeInfo(source="answer", target="review", label=""),
+        # -- Medium path --
+        GraphEdgeInfo(source="guard_answer", target="answer", label=""),
+        GraphEdgeInfo(source="answer", target="post_answer", label=""),
+        GraphEdgeInfo(source="post_answer", target="guard_review", label=""),
+        GraphEdgeInfo(source="guard_review", target="review", label=""),
+        GraphEdgeInfo(source="review", target="post_review", label=""),
+
+        # post_review → route after review
         GraphEdgeInfo(
-            source="review", target="__end__",
+            source="post_review", target="__end__",
             label="approved", type="conditional",
-            condition_map={"approved": "__end__", "retry": "answer"},
+            condition_map={"approved": "__end__", "retry": "iter_gate_medium", "end": "__end__"},
         ),
         GraphEdgeInfo(
-            source="review", target="answer",
+            source="post_review", target="iter_gate_medium",
             label="retry", type="conditional",
-            condition_map={"approved": "__end__", "retry": "answer"},
+            condition_map={"approved": "__end__", "retry": "iter_gate_medium", "end": "__end__"},
         ),
 
-        # Hard: create_todos -> execute_todo -> check_progress -> [continue/complete]
-        GraphEdgeInfo(source="create_todos", target="execute_todo", label=""),
-        GraphEdgeInfo(source="execute_todo", target="check_progress", label=""),
+        # iter_gate_medium → route
         GraphEdgeInfo(
-            source="check_progress", target="execute_todo",
+            source="iter_gate_medium", target="guard_answer",
             label="continue", type="conditional",
-            condition_map={"continue": "execute_todo", "complete": "final_review"},
+            condition_map={"continue": "guard_answer", "stop": "__end__"},
         ),
         GraphEdgeInfo(
-            source="check_progress", target="final_review",
-            label="complete", type="conditional",
-            condition_map={"continue": "execute_todo", "complete": "final_review"},
+            source="iter_gate_medium", target="__end__",
+            label="stop", type="conditional",
+            condition_map={"continue": "guard_answer", "stop": "__end__"},
         ),
-        GraphEdgeInfo(source="final_review", target="final_answer", label=""),
-        GraphEdgeInfo(source="final_answer", target="__end__", label=""),
+
+        # -- Hard path --
+        GraphEdgeInfo(source="guard_create_todos", target="create_todos", label=""),
+        GraphEdgeInfo(source="create_todos", target="post_create_todos", label=""),
+        GraphEdgeInfo(source="post_create_todos", target="guard_execute", label=""),
+        GraphEdgeInfo(source="guard_execute", target="execute_todo", label=""),
+        GraphEdgeInfo(source="execute_todo", target="post_execute", label=""),
+        GraphEdgeInfo(source="post_execute", target="check_progress", label=""),
+
+        # check_progress → route after progress
+        GraphEdgeInfo(
+            source="check_progress", target="iter_gate_hard",
+            label="continue", type="conditional",
+            condition_map={"continue": "iter_gate_hard", "complete": "guard_final_review"},
+        ),
+        GraphEdgeInfo(
+            source="check_progress", target="guard_final_review",
+            label="complete", type="conditional",
+            condition_map={"continue": "iter_gate_hard", "complete": "guard_final_review"},
+        ),
+
+        # iter_gate_hard → route
+        GraphEdgeInfo(
+            source="iter_gate_hard", target="guard_execute",
+            label="continue", type="conditional",
+            condition_map={"continue": "guard_execute", "stop": "guard_final_review"},
+        ),
+        GraphEdgeInfo(
+            source="iter_gate_hard", target="guard_final_review",
+            label="stop", type="conditional",
+            condition_map={"continue": "guard_execute", "stop": "guard_final_review"},
+        ),
+
+        # Final review/answer chain
+        GraphEdgeInfo(source="guard_final_review", target="final_review", label=""),
+        GraphEdgeInfo(source="final_review", target="post_final_review", label=""),
+        GraphEdgeInfo(source="post_final_review", target="guard_final_answer", label=""),
+        GraphEdgeInfo(source="guard_final_answer", target="final_answer", label=""),
+        GraphEdgeInfo(source="final_answer", target="post_final_answer", label=""),
+        GraphEdgeInfo(source="post_final_answer", target="__end__", label=""),
     ]
 
     return GraphStructure(
