@@ -68,9 +68,12 @@ function switchTab(tabName) {
         pane.classList.toggle('active', pane.id === `${tabName}-tab`);
     });
 
-    // Refresh data if needed
-    if (tabName === 'logs' && state.selectedSessionId) {
-        loadSessionLogs();
+    // Logs tab: start polling; other tabs: stop it
+    if (tabName === 'logs') {
+        if (state.selectedSessionId) loadSessionLogs();
+        startLogsAutoRefresh();
+    } else {
+        stopLogsAutoRefresh();
     }
 
     // Load storage when switching to storage tab
@@ -127,8 +130,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(checkHealth, 30000); // Health check every 30s
     setInterval(loadSessions, 60000); // Session list every 60s
 
-    // Start logs auto-refresh (default enabled)
-    startLogsAutoRefresh();
+    // Logs auto-refresh is started on-demand when switching to logs tab
+    // (not started globally to avoid polling when tab is inactive)
 
     // Handle resize events
     window.addEventListener('resize', () => {
