@@ -1,6 +1,6 @@
 /**
  * Claude Control Dashboard - Main Application
- * 
+ *
  * This file contains initialization logic and tab navigation.
  * All other functionality is split into components/*.js
  */
@@ -87,6 +87,11 @@ function switchTab(tabName) {
     if (tabName === 'dashboard') {
         refreshManagerDashboard();
     }
+
+    // Load graph when switching to graph tab
+    if (tabName === 'graph') {
+        refreshGraphTab();
+    }
 }
 
 // ========== Main Refresh ==========
@@ -117,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load initial data
     refreshAll();
-    
+
     // Periodic refresh
     setInterval(checkHealth, 30000); // Health check every 30s
     setInterval(loadSessions, 60000); // Session list every 60s

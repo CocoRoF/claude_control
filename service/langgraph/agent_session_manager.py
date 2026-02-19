@@ -46,6 +46,10 @@ from service.pod.pod_info import get_pod_info
 from service.logging.session_logger import get_session_logger, remove_session_logger
 
 from service.langgraph.agent_session import AgentSession
+from service.prompt.sections import build_agent_prompt
+from service.prompt.context_loader import ContextLoader
+from service.tool_policy import ToolPolicyEngine, ToolProfile
+from service.prompt.builder import PromptMode
 
 logger = getLogger(__name__)
 
@@ -86,6 +90,108 @@ class AgentSessionManager(SessionManager):
         logger.info("✅ AgentSessionManager initialized")
 
     # ========================================================================
+    # Prompt Builder
+    # ========================================================================
+
+    def _build_system_prompt(self, request: CreateSessionRequest) -> str:
+        """Build the system prompt using the modular prompt builder.
+
+        Applies the OpenClaw-inspired buildAgentSystemPrompt() pattern:
+        assembles the prompt dynamically based on role, mode, context files,
+        and (if available) previously persisted session memory.
+
+        Args:
+            request: Session creation request.
+
+        Returns:
+            Assembled system prompt string.
+        """
+        # Determine role
+        role = request.role.value if request.role else "worker"
+
+        # Resolve tool policy for this role
+        policy = ToolPolicyEngine.for_role(
+            role=role,
+            explicit_tools=request.allowed_tools,
+        )
+        logger.debug(f"  ToolPolicy: {policy}")
+
+        # Merge global + per-session MCP configs, then filter by policy
+        merged_mcp = merge_mcp_configs(self._global_mcp_config, request.mcp_config)
+        filtered_mcp = policy.filter_mcp_config(merged_mcp)
+        mcp_servers: list[str] = []
+        if filtered_mcp and filtered_mcp.servers:
+            mcp_servers = list(filtered_mcp.servers.keys())
+
+        # Load bootstrap context files from working directory
+        context_files: dict[str, str] = {}
+        if request.working_dir:
+            try:
+                loader = ContextLoader(
+                    working_dir=request.working_dir,
+                    include_readme=(role in ("researcher", "manager")),
+                )
+                context_files = loader.load_context_files()
+                if context_files:
+                    logger.info(
+                        f"  Loaded {len(context_files)} context files: "
+                        f"{list(context_files.keys())}"
+                    )
+            except Exception as e:
+                logger.warning(f"  ContextLoader failed: {e}")
+
+        # Load persisted memory if storage_path exists
+        memory_context = ""
+        storage_path = request.working_dir  # May be overridden by process storage_path later
+        if storage_path:
+            try:
+                from service.memory.manager import SessionMemoryManager
+                mgr = SessionMemoryManager(storage_path)
+                mgr.initialize()
+                memory_context = mgr.build_memory_context(max_chars=4000)
+                if memory_context:
+                    logger.info(f"  Injected {len(memory_context)} chars of memory context")
+            except Exception:
+                pass  # Memory not available yet — fine
+
+        # Determine prompt mode
+        if role in ("manager", "self-manager", "developer", "researcher"):
+            mode = PromptMode.FULL
+        elif request.manager_id:
+            # Worker with a manager → MINIMAL (sub-agent)
+            mode = PromptMode.MINIMAL
+        else:
+            # Standalone worker → FULL
+            mode = PromptMode.FULL
+
+        # Allowed tools list (filtered by policy)
+        tools = policy.filter_tool_names(request.allowed_tools)
+
+        # Build prompt
+        prompt = build_agent_prompt(
+            agent_name="Claude Control Agent",
+            role=role,
+            agent_id=None,
+            working_dir=request.working_dir,
+            model=request.model,
+            session_id=None,  # Session ID not yet created at this point
+            tools=tools,
+            mcp_servers=mcp_servers,
+            autonomous=request.autonomous if request.autonomous is not None else True,
+            mode=mode,
+            context_files=context_files if context_files else None,
+            extra_system_prompt=request.system_prompt,
+        )
+
+        # Append memory context if available
+        if memory_context:
+            prompt = prompt + "\n\n" + memory_context
+
+        logger.debug(f"  PromptBuilder: mode={mode.value}, role={role}, length={len(prompt)} chars")
+
+        return prompt
+
+    # ========================================================================
     # AgentSession Creation
     # ========================================================================
 
@@ -114,19 +220,21 @@ class AgentSessionManager(SessionManager):
         logger.info(f"  model: {request.model}")
         logger.info(f"  role: {request.role.value if request.role else 'worker'}")
 
-        # MCP 설정 병합 (글로벌 + 세션)
+        # Merge MCP configs and apply tool policy
+        role = request.role.value if request.role else "worker"
+        policy = ToolPolicyEngine.for_role(
+            role=role,
+            explicit_tools=request.allowed_tools,
+        )
         merged_mcp_config = merge_mcp_configs(self._global_mcp_config, request.mcp_config)
+        merged_mcp_config = policy.filter_mcp_config(merged_mcp_config)
 
         if merged_mcp_config and merged_mcp_config.servers:
-            logger.info(f"  mcp_servers: {list(merged_mcp_config.servers.keys())}")
+            logger.info(f"  mcp_servers (policy={policy.profile.value}): {list(merged_mcp_config.servers.keys())}")
 
-        # 시스템 프롬프트 준비 (매니저 역할인 경우 매니저 프롬프트 추가)
-        system_prompt = request.system_prompt or ""
-        if request.role and request.role.value == "manager":
-            manager_prompt = self._load_manager_prompt()
-            if manager_prompt:
-                system_prompt = manager_prompt + "\n\n" + system_prompt if system_prompt else manager_prompt
-                logger.info(f"  📋 Manager prompt added automatically")
+        # 시스템 프롬프트 준비 — 모듈러 프롬프트 빌더 사용
+        system_prompt = self._build_system_prompt(request)
+        logger.info(f"  📋 System prompt built via PromptBuilder ({len(system_prompt)} chars)")
 
         # AgentSession 생성
         agent = await AgentSession.create(

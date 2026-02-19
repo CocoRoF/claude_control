@@ -282,7 +282,7 @@ async def dashboard(request: Request):
     """Serve the Web UI Dashboard with server-side rendered initial data"""
     # Get initial data for SSR
     sessions = agent_manager.list_sessions()
-    sessions_data = [s.model_dump() for s in sessions]
+    sessions_data = [s.model_dump(mode="json") for s in sessions]
 
     # Get prompts list
     prompts_data = get_prompts_list()

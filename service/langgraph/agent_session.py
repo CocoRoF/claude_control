@@ -1,33 +1,26 @@
-"""
-AgentSession - CompiledStateGraph 기반 세션 관리
+"""AgentSession — CompiledStateGraph-based session management.
 
-기존 CLI 세션(ClaudeProcess)을 내부에 보유하면서
-LangGraph의 CompiledStateGraph로 래핑하여 상태 관리 기능을 제공합니다.
+Wraps a CLI session (ClaudeProcess) inside a LangGraph CompiledStateGraph
+to provide state-driven execution with resilience (context guard, model
+fallback, completion detection) and session memory (long-term / short-term).
 
-새 세션 생성 과정:
-1. CLI 세션 생성 (ClaudeProcess via ClaudeCLIChatModel)
-2. CompiledStateGraph 생성 (AgentSession)
+Session creation flow:
+    1. Create CLI session (ClaudeProcess via ClaudeCLIChatModel)
+    2. Build CompiledStateGraph (AgentSession)
+    3. Initialize SessionMemoryManager for the session storage path
 
-이렇게 생성된 AgentSession이 실제 에이전트 세션으로 사용됩니다.
+Usage::
 
-사용 예:
-    from service.langgraph import AgentSession, AgentState
+    from service.langgraph import AgentSession
 
-    # 새 에이전트 세션 생성
     agent = await AgentSession.create(
         working_dir="/path/to/project",
         model_name="claude-sonnet-4-20250514",
-        session_name="my-agent"
+        session_name="my-agent",
     )
-
-    # 실행
     result = await agent.invoke("Hello, what can you help me with?")
-
-    # 스트리밍 실행
     async for event in agent.astream("Build a web app"):
         print(event)
-
-    # 정리
     await agent.cleanup()
 """
 
@@ -63,6 +56,8 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel, Field, PrivateAttr
 
+from service.langgraph.checkpointer import create_checkpointer
+
 from service.claude_manager.models import (
     MCPConfig,
     SessionInfo,
@@ -71,6 +66,20 @@ from service.claude_manager.models import (
 )
 from service.claude_manager.process_manager import ClaudeProcess
 from service.langgraph.claude_cli_model import ClaudeCLIChatModel
+from service.langgraph.state import (
+    AgentState,
+    CompletionSignal,
+    make_initial_agent_state,
+)
+from service.langgraph.resilience_nodes import (
+    completion_detect_node,
+    detect_completion_signal,
+    make_context_guard_node,
+)
+from service.langgraph.session_freshness import (
+    SessionFreshness,
+    FreshnessConfig,
+)
 from service.logging.session_logger import get_session_logger, SessionLogger
 
 # Lazy import to avoid circular dependency
@@ -88,60 +97,22 @@ logger = getLogger(__name__)
 
 
 # ============================================================================
-# State Definition
-# ============================================================================
-
-
-def add_messages(left: List[BaseMessage], right: List[BaseMessage]) -> List[BaseMessage]:
-    """메시지 리스트 병합 (reducer 함수)"""
-    return left + right
-
-
-class AgentState(TypedDict):
-    """
-    AgentSession의 상태 정의.
-
-    LangGraph StateGraph에서 사용되는 상태 스키마입니다.
-    """
-    # 대화 메시지 히스토리 (reducer로 누적)
-    messages: Annotated[List[BaseMessage], add_messages]
-
-    # 현재 실행 단계
-    current_step: str
-
-    # 마지막 에이전트 출력
-    last_output: Optional[str]
-
-    # 실행 메타데이터
-    metadata: Dict[str, Any]
-
-    # 에러 정보
-    error: Optional[str]
-
-    # 실행 완료 여부
-    is_complete: bool
-
-
-# ============================================================================
 # AgentSession Class
 # ============================================================================
 
 
 class AgentSession:
-    """
-    CompiledStateGraph 기반 에이전트 세션.
+    """CompiledStateGraph-based agent session.
 
-    기존 ClaudeProcess의 CLI 세션을 내부에 보유하면서
-    LangGraph의 상태 관리 기능을 통합합니다.
+    Owns a ClaudeProcess (CLI subprocess) wrapped as a LangChain model
+    and orchestrated via a LangGraph state graph with resilience nodes
+    (context guard, completion detection) and session memory.
 
-    핵심 구조:
-    - ClaudeCLIChatModel: ClaudeProcess를 래핑한 LangChain 모델
-    - CompiledStateGraph: LangGraph 그래프 (노드: agent, router)
-    - MemorySaver: 체크포인팅 지원 (옵션)
-
-    기존 SessionInfo와 호환:
-    - session_id, session_name, status 등 동일 필드 제공
-    - get_session_info() 메서드로 SessionInfo 객체 반환
+    Key architecture:
+        - ClaudeCLIChatModel: wraps ClaudeProcess as a LangChain model
+        - CompiledStateGraph: LangGraph graph executing agent + guard nodes
+        - SessionMemoryManager: long-term / short-term memory in session dir
+        - Checkpointer: persistent (SqliteSaver) or in-memory (MemorySaver)
     """
 
     def __init__(
@@ -161,32 +132,31 @@ class AgentSession:
         manager_id: Optional[str] = None,
         enable_checkpointing: bool = False,
     ):
-        """
-        AgentSession 초기화.
+        """Initialize AgentSession.
 
         Args:
-            session_id: 세션 ID (미제공시 자동 생성)
-            session_name: 세션 이름
-            working_dir: CLI 작업 디렉토리
-            model_name: Claude 모델명
-            max_turns: 최대 턴 수
-            timeout: 실행 타임아웃 (초)
-            system_prompt: 시스템 프롬프트
-            env_vars: 환경 변수
-            mcp_config: MCP 설정
-            autonomous: 자율 모드 여부
-            autonomous_max_iterations: 자율 실행 최대 반복 횟수
-            role: 세션 역할 (MANAGER/WORKER)
-            manager_id: 매니저 세션 ID (WORKER인 경우)
-            enable_checkpointing: 체크포인팅 활성화 여부
+            session_id: Unique session identifier (auto-generated if omitted).
+            session_name: Human-readable session label.
+            working_dir: CLI working directory (falls back to storage_path).
+            model_name: Claude model name.
+            max_turns: Maximum turns per CLI invocation.
+            timeout: Execution timeout in seconds.
+            system_prompt: System prompt override.
+            env_vars: Extra environment variables.
+            mcp_config: MCP server configuration.
+            autonomous: Whether to use autonomous (difficulty-based) execution.
+            autonomous_max_iterations: Max graph iterations for autonomous mode.
+            role: Session role (MANAGER / WORKER).
+            manager_id: Parent manager session ID (for workers).
+            enable_checkpointing: Enable LangGraph MemorySaver checkpointing.
         """
-        # 세션 식별 정보
+        # Session identity
         self._session_id = session_id or str(uuid.uuid4())
         self._session_name = session_name
         self._created_at = datetime.now()
 
-        # 실행 설정 (working_dir=None이면 ClaudeProcess에서 storage_path 사용)
-        self._working_dir = working_dir  # None allowed - ClaudeProcess will use storage_path
+        # Execution settings (working_dir=None → ClaudeProcess uses storage_path)
+        self._working_dir = working_dir
         self._model_name = model_name
         self._max_turns = max_turns
         self._timeout = timeout
@@ -196,27 +166,33 @@ class AgentSession:
         self._autonomous = autonomous
         self._autonomous_max_iterations = autonomous_max_iterations
 
-        # 역할 설정
+        # Role
         self._role = role
         self._manager_id = manager_id
 
-        # 내부 컴포넌트
+        # Internal components
         self._model: Optional[ClaudeCLIChatModel] = None
         self._graph: Optional[CompiledStateGraph] = None
-        self._checkpointer: Optional[MemorySaver] = None
+        self._checkpointer: Optional[object] = None  # MemorySaver or SqliteSaver
         self._enable_checkpointing = enable_checkpointing
 
-        # 실행 상태
+        # Memory manager (initialized lazily once storage_path is available)
+        self._memory_manager: Optional["SessionMemoryManager"] = None
+
+        # Execution state
         self._initialized = False
         self._error_message: Optional[str] = None
         self._current_thread_id: str = "default"
         self._current_iteration: int = 0
         self._execution_start_time: Optional[datetime] = None
 
-        # Autonomous 그래프 (autonomous 모드일 때 사용)
+        # Autonomous graph (used when autonomous=True)
         self._autonomous_graph: Optional[CompiledStateGraph] = None
 
-        # 초기 상태 설정 (STARTING 사용)
+        # Session freshness evaluator
+        self._freshness = SessionFreshness()
+
+        # Initial status
         self._status = SessionStatus.STARTING
 
     # ========================================================================
@@ -236,22 +212,21 @@ class AgentSession:
         enable_checkpointing: bool = False,
         **kwargs,
     ) -> "AgentSession":
-        """
-        새 AgentSession을 생성하고 초기화.
+        """Create and initialize a new AgentSession.
 
         Args:
-            working_dir: 작업 디렉토리
-            model_name: Claude 모델명
-            session_name: 세션 이름
-            session_id: 세션 ID
-            system_prompt: 시스템 프롬프트
-            mcp_config: MCP 설정
-            role: 세션 역할
-            enable_checkpointing: 체크포인팅 활성화
-            **kwargs: 추가 설정
+            working_dir: Working directory for the CLI session.
+            model_name: Claude model name.
+            session_name: Human-readable session label.
+            session_id: Unique session ID.
+            system_prompt: System prompt override.
+            mcp_config: MCP configuration.
+            role: Session role.
+            enable_checkpointing: Enable LangGraph checkpointing.
+            **kwargs: Additional settings forwarded to __init__.
 
         Returns:
-            초기화된 AgentSession 인스턴스
+            Fully initialized AgentSession instance.
         """
         agent = cls(
             session_id=session_id,
@@ -273,15 +248,14 @@ class AgentSession:
 
     @classmethod
     def from_process(cls, process: ClaudeProcess, enable_checkpointing: bool = False) -> "AgentSession":
-        """
-        기존 ClaudeProcess를 사용하여 AgentSession 생성.
+        """Create AgentSession from an existing ClaudeProcess.
 
         Args:
-            process: 초기화된 ClaudeProcess 인스턴스
-            enable_checkpointing: 체크포인팅 활성화
+            process: Initialized ClaudeProcess instance.
+            enable_checkpointing: Enable LangGraph checkpointing.
 
         Returns:
-            AgentSession 인스턴스
+            AgentSession instance.
         """
         agent = cls(
             session_id=process.session_id,
@@ -300,9 +274,10 @@ class AgentSession:
             enable_checkpointing=enable_checkpointing,
         )
 
-        # ClaudeProcess를 사용하여 모델 생성
+        # Wire model, build graph, initialize memory
         agent._model = ClaudeCLIChatModel.from_process(process)
         agent._build_graph()
+        agent._init_memory()
         agent._initialized = True
         agent._status = SessionStatus.RUNNING
 
@@ -311,15 +286,14 @@ class AgentSession:
 
     @classmethod
     def from_model(cls, model: ClaudeCLIChatModel, enable_checkpointing: bool = False) -> "AgentSession":
-        """
-        기존 ClaudeCLIChatModel을 사용하여 AgentSession 생성.
+        """Create AgentSession from an existing ClaudeCLIChatModel.
 
         Args:
-            model: 초기화된 ClaudeCLIChatModel 인스턴스
-            enable_checkpointing: 체크포인팅 활성화
+            model: Initialized ClaudeCLIChatModel instance.
+            enable_checkpointing: Enable LangGraph checkpointing.
 
         Returns:
-            AgentSession 인스턴스
+            AgentSession instance.
         """
         if not model.is_initialized:
             raise ValueError("ClaudeCLIChatModel must be initialized before creating AgentSession")
@@ -340,6 +314,7 @@ class AgentSession:
 
         agent._model = model
         agent._build_graph()
+        agent._init_memory()
         agent._initialized = True
         agent._status = SessionStatus.RUNNING
 
@@ -347,7 +322,7 @@ class AgentSession:
         return agent
 
     # ========================================================================
-    # Properties (SessionInfo 호환)
+    # Properties (SessionInfo compatible)
     # ========================================================================
 
     @property
@@ -368,7 +343,7 @@ class AgentSession:
 
     @property
     def pid(self) -> Optional[int]:
-        """프로세스 ID (ClaudeProcess에서 가져옴)"""
+        """Process ID from the underlying ClaudeProcess."""
         if self._model and self._model.process:
             return self._model.process.pid
         return None
@@ -411,56 +386,102 @@ class AgentSession:
 
     @property
     def graph(self) -> Optional[CompiledStateGraph]:
-        """내부 CompiledStateGraph 반환"""
+        """Internal CompiledStateGraph."""
         return self._graph
 
     @property
     def model(self) -> Optional[ClaudeCLIChatModel]:
-        """내부 ClaudeCLIChatModel 반환"""
+        """Internal ClaudeCLIChatModel."""
         return self._model
 
     @property
     def process(self) -> Optional[ClaudeProcess]:
-        """내부 ClaudeProcess 반환"""
+        """Internal ClaudeProcess."""
         if self._model:
             return self._model.process
         return None
 
     @property
     def storage_path(self) -> Optional[str]:
-        """세션 저장 경로"""
+        """Session storage directory path."""
         if self._model and self._model.process:
             return self._model.process.storage_path
         return None
 
+    @property
+    def memory_manager(self) -> Optional["SessionMemoryManager"]:
+        """Session memory manager (available after initialization)."""
+        return self._memory_manager
+
     def _get_logger(self) -> Optional[SessionLogger]:
-        """세션 로거 가져오기 (lazy)"""
+        """Get session logger (lazy)."""
         return get_session_logger(self._session_id, create_if_missing=True)
 
     def _get_state_summary(self, state: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        """현재 상태 요약 생성 (로깅용)"""
+        """Build a compact state summary for logging."""
         if not state:
             return None
+        ctx = state.get("context_budget")
         return {
             "messages_count": len(state.get("messages", [])),
             "current_step": state.get("current_step"),
             "is_complete": state.get("is_complete", False),
             "has_error": bool(state.get("error")),
-            "iteration": state.get("metadata", {}).get("iteration", 0),
+            "iteration": state.get("iteration", 0),
+            "completion_signal": state.get("completion_signal"),
+            "context_usage": f"{ctx['usage_ratio']:.0%}" if ctx else None,
+            "memory_refs_count": len(state.get("memory_refs", [])),
         }
     # ========================================================================
     # Core Methods
     # ========================================================================
 
-    async def initialize(self) -> bool:
-        """
-        AgentSession 초기화.
+    def _check_freshness(self) -> None:
+        """Evaluate session freshness and log or raise on staleness.
 
-        1. ClaudeCLIChatModel 생성 및 초기화
-        2. LangGraph StateGraph 빌드
+        Called at the top of ``invoke()`` and ``astream()`` to detect
+        sessions that are too old, idle, or large.  On STALE_RESET the
+        session is marked as ERROR to prevent further use.
+        """
+        result = self._freshness.evaluate(
+            created_at=self._created_at,
+            last_activity=self._execution_start_time,
+            iteration_count=self._current_iteration,
+            message_count=0,  # message count resolved inside the graph
+        )
+        if result.should_reset:
+            self._status = SessionStatus.ERROR
+            self._error_message = f"Session stale: {result.reason}"
+            raise RuntimeError(
+                f"Session {self._session_id} is stale and should be recreated: "
+                f"{result.reason}"
+            )
+
+    def _init_memory(self):
+        """Initialize the session memory manager if storage_path is available."""
+        sp = self.storage_path
+        if not sp:
+            logger.debug(f"[{self._session_id}] No storage_path — memory manager skipped")
+            return
+        try:
+            from service.memory.manager import SessionMemoryManager
+            self._memory_manager = SessionMemoryManager(sp)
+            self._memory_manager.initialize()
+            logger.info(f"[{self._session_id}] SessionMemoryManager initialized at {sp}")
+        except Exception as e:
+            logger.warning(f"[{self._session_id}] Failed to initialize memory: {e}")
+            self._memory_manager = None
+
+    async def initialize(self) -> bool:
+        """Initialize the AgentSession.
+
+        Steps:
+            1. Create and initialize ClaudeCLIChatModel (spawns ClaudeProcess).
+            2. Build LangGraph StateGraph with resilience nodes.
+            3. Initialize SessionMemoryManager.
 
         Returns:
-            초기화 성공 여부
+            True on success, False on failure.
         """
         if self._initialized:
             logger.info(f"[{self._session_id}] AgentSession already initialized")
@@ -469,7 +490,7 @@ class AgentSession:
         logger.info(f"[{self._session_id}] Initializing AgentSession...")
 
         try:
-            # 1. ClaudeCLIChatModel 생성
+            # 1. Create ClaudeCLIChatModel
             self._model = ClaudeCLIChatModel(
                 session_id=self._session_id,
                 session_name=self._session_name,
@@ -483,7 +504,7 @@ class AgentSession:
                 autonomous=self._autonomous,
             )
 
-            # 2. ClaudeCLIChatModel 초기화 (ClaudeProcess 생성)
+            # 2. Initialize model (spawns ClaudeProcess)
             success = await self._model.initialize()
             if not success:
                 self._error_message = self._model.process.error_message if self._model.process else "Unknown error"
@@ -491,12 +512,15 @@ class AgentSession:
                 logger.error(f"[{self._session_id}] Failed to initialize model: {self._error_message}")
                 return False
 
-            # 3. StateGraph 빌드
+            # 3. Build StateGraph
             self._build_graph()
+
+            # 4. Initialize memory manager
+            self._init_memory()
 
             self._initialized = True
             self._status = SessionStatus.RUNNING
-            logger.info(f"[{self._session_id}] ✅ AgentSession initialized successfully")
+            logger.info(f"[{self._session_id}] AgentSession initialized successfully")
             return True
 
         except Exception as e:
@@ -506,32 +530,35 @@ class AgentSession:
             return False
 
     def _build_graph(self):
-        """
-        LangGraph StateGraph 빌드.
+        """Build the LangGraph StateGraph.
 
-        autonomous 모드일 경우: 난이도 기반 AutonomousGraph 사용
-        non-autonomous 모드: 단순 agent -> process_output 그래프 사용
+        If autonomous mode: uses difficulty-based AutonomousGraph.
+        Otherwise: builds a simple agent -> process_output loop with
+        context guard and completion detection nodes.
         """
-        # 체크포인터 설정
+        # Checkpointer setup (persistent when storage_path is available)
         if self._enable_checkpointing:
-            self._checkpointer = MemorySaver()
+            storage = self.storage_path if hasattr(self, 'storage_path') else None
+            self._checkpointer = create_checkpointer(
+                storage_path=storage,
+                persistent=True,
+            )
 
-        # Autonomous 모드일 때는 AutonomousGraph 사용
+        # Autonomous mode: AutonomousGraph
         if self._autonomous:
             self._build_autonomous_graph()
         else:
             self._build_simple_graph()
 
-        logger.debug(f"[{self._session_id}] StateGraph built successfully (autonomous={self._autonomous})")
+        logger.debug(f"[{self._session_id}] StateGraph built (autonomous={self._autonomous})")
 
     def _build_autonomous_graph(self):
-        """
-        Autonomous 모드용 그래프 빌드.
+        """Build difficulty-based AutonomousGraph.
 
-        난이도 기반 AutonomousGraph 사용:
-        - Easy: 바로 답변
-        - Medium: 답변 + 검토
-        - Hard: TODO 생성 -> 개별 실행 -> 검토 -> 최종 답변
+        Routes:
+            - Easy: direct answer
+            - Medium: answer + review loop
+            - Hard: TODO planning -> execute -> review -> final
         """
         AutonomousGraph = _get_autonomous_graph_class()
 
@@ -540,65 +567,78 @@ class AgentSession:
             session_id=self._session_id,
             enable_checkpointing=self._enable_checkpointing,
             max_review_retries=3,
+            storage_path=self.storage_path if hasattr(self, 'storage_path') else None,
         )
 
         self._autonomous_graph = autonomous_graph_builder.build()
 
-        # 기본 그래프도 빌드 (호환성)
+        # Also build the simple graph for backward compatibility
         self._build_simple_graph()
 
         logger.info(f"[{self._session_id}] AutonomousGraph built for autonomous execution")
 
     def _build_simple_graph(self):
-        """
-        Non-autonomous 모드용 단순 그래프 빌드.
+        """Build the simple (non-autonomous) state graph.
 
-        그래프 구조:
-        START -> agent -> process_output -> END or agent (반복)
+        Graph topology::
+
+            START -> context_guard -> agent -> process_output
+                         ^                        |
+                         |--- continue -----------+
+                                                  |
+                                           end -> END
+
+        Nodes:
+            context_guard  — check context budget, auto-compact if needed
+            agent          — invoke Claude CLI, record transcript
+            process_output — increment iteration, detect completion signal
         """
-        # StateGraph 생성
         graph_builder = StateGraph(AgentState)
 
-        # 노드 등록
+        # -- Register nodes --
+        # Context guard (factory creates a closure with model-specific limits)
+        graph_builder.add_node(
+            "context_guard",
+            make_context_guard_node(model=self._model_name),
+        )
         graph_builder.add_node("agent", self._agent_node)
         graph_builder.add_node("process_output", self._process_output_node)
 
-        # 엣지 정의
-        graph_builder.add_edge(START, "agent")
+        # -- Edges --
+        graph_builder.add_edge(START, "context_guard")
+        graph_builder.add_edge("context_guard", "agent")
         graph_builder.add_edge("agent", "process_output")
         graph_builder.add_conditional_edges(
             "process_output",
             self._should_continue,
             {
-                "continue": "agent",
+                "continue": "context_guard",
                 "end": END,
-            }
+            },
         )
 
-        # 그래프 컴파일
+        # Compile
         if self._checkpointer:
             self._graph = graph_builder.compile(checkpointer=self._checkpointer)
         else:
             self._graph = graph_builder.compile()
 
     async def _agent_node(self, state: AgentState) -> Dict[str, Any]:
-        """
-        에이전트 노드: Claude CLI 호출.
+        """Agent node: invoke Claude CLI and update state.
 
-        현재 상태의 메시지를 기반으로 Claude에게 요청하고
-        응답을 상태에 추가합니다.
+        Reads messages from state, calls the model, writes the response
+        back. Also records the turn to short-term memory if available.
         """
         import time
         start_time = time.time()
-        iteration = state.get("metadata", {}).get("iteration", 0)
+        iteration = state.get("iteration", 0)
 
-        # 로깅: 노드 진입
         session_logger = self._get_logger()
         if session_logger:
             session_logger.log_graph_node_enter(
                 node_name="agent",
                 iteration=iteration,
-                state_summary=self._get_state_summary(state)
+                state_summary=self._get_state_summary(state),
             )
 
         try:
@@ -612,27 +652,38 @@ class AgentSession:
                     session_logger.log_graph_error(
                         error_message="No messages in state",
                         node_name="agent",
-                        iteration=iteration
+                        iteration=iteration,
                     )
                 return error_result
 
-            # Claude CLI 호출
+            # Invoke Claude CLI
             response = await self._model.ainvoke(messages)
             duration_ms = int((time.time() - start_time) * 1000)
 
-            output_content = response.content if hasattr(response, 'content') else str(response)
+            output_content = response.content if hasattr(response, "content") else str(response)
 
-            # 로깅: 노드 완료
+            # Record turn to short-term memory
+            if self._memory_manager:
+                try:
+                    self._memory_manager.record_message("assistant", output_content)
+                    # Record user input on first iteration
+                    if iteration == 0:
+                        for msg in messages:
+                            if hasattr(msg, "type") and msg.type == "human":
+                                self._memory_manager.record_message("user", msg.content)
+                                break
+                except Exception:
+                    logger.debug("Failed to record transcript — non-critical", exc_info=True)
+
             if session_logger:
                 session_logger.log_graph_node_exit(
                     node_name="agent",
                     iteration=iteration,
                     output_preview=output_content,
                     duration_ms=duration_ms,
-                    state_changes={"messages_added": 1, "last_output_updated": True}
+                    state_changes={"messages_added": 1, "last_output_updated": True},
                 )
 
-            # 응답 메시지 추가
             return {
                 "messages": [response],
                 "last_output": output_content,
@@ -644,13 +695,12 @@ class AgentSession:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.exception(f"[{self._session_id}] Error in agent node: {e}")
 
-            # 로깅: 에러
             if session_logger:
                 session_logger.log_graph_error(
                     error_message=str(e),
                     node_name="agent",
                     iteration=iteration,
-                    error_type=type(e).__name__
+                    error_type=type(e).__name__,
                 )
 
             return {
@@ -659,49 +709,61 @@ class AgentSession:
             }
 
     async def _process_output_node(self, state: AgentState) -> Dict[str, Any]:
-        """
-        출력 처리 노드.
+        """Process output node: increment iteration & detect completion.
 
-        에이전트 응답을 처리하고 다음 상태를 결정합니다.
+        Reads ``last_output`` from state, runs structured signal detection,
+        and writes ``iteration``, ``completion_signal``, ``completion_detail``
+        back to state. The edge function then reads these to decide routing.
         """
-        metadata = state.get("metadata", {})
-        iteration = metadata.get("iteration", 0) + 1
-        max_iterations = metadata.get("max_iterations", self._autonomous_max_iterations)
+        iteration = state.get("iteration", 0) + 1
+        max_iterations = state.get("max_iterations", self._autonomous_max_iterations)
 
-        # 현재 반복 횟수 업데이트
+        # Track instance-level iteration counter
         self._current_iteration = iteration
 
-        # 로깅: 노드 진입/완료 (처리 노드는 간단하므로 한번에)
         session_logger = self._get_logger()
         if session_logger:
             session_logger.log_graph_node_enter(
                 node_name="process_output",
                 iteration=iteration,
-                state_summary=self._get_state_summary(state)
+                state_summary=self._get_state_summary(state),
             )
             session_logger.log_graph_state_update(
                 update_type="iteration_increment",
                 changes={"iteration": iteration, "max_iterations": max_iterations},
-                iteration=iteration
+                iteration=iteration,
             )
 
-        return {
-            "metadata": {**metadata, "iteration": iteration},
+        # Detect structured completion signal from last output
+        last_output = state.get("last_output", "")
+        signal, detail = detect_completion_signal(last_output)
+
+        updates: Dict[str, Any] = {
+            "iteration": iteration,
             "current_step": "output_processed",
+            "completion_signal": signal.value,
+            "completion_detail": detail,
         }
 
-    def _should_continue(self, state: AgentState) -> Literal["continue", "end"]:
-        """
-        조건부 엣지: 계속 실행 여부 결정.
+        # Mark is_complete if signal says task is done/blocked/error
+        if signal in (CompletionSignal.COMPLETE, CompletionSignal.BLOCKED, CompletionSignal.ERROR):
+            updates["is_complete"] = True
 
-        종료 조건:
-        1. is_complete가 True
-        2. error가 있음
-        3. max_iterations 도달
+        return updates
+
+    def _should_continue(self, state: AgentState) -> Literal["continue", "end"]:
+        """Conditional edge: decide whether to loop or stop.
+
+        Reads state fields written by process_output_node:
+            - is_complete, error          → immediate stop
+            - completion_signal           → structured stop / continue
+            - iteration / max_iterations  → iteration cap
+
+        Returns:
+            "continue" to loop back to context_guard, "end" to finish.
         """
-        metadata = state.get("metadata", {})
-        iteration = metadata.get("iteration", 0)
-        max_iterations = metadata.get("max_iterations", self._autonomous_max_iterations)
+        iteration = state.get("iteration", 0)
+        max_iterations = state.get("max_iterations", self._autonomous_max_iterations)
         session_logger = self._get_logger()
 
         decision = "continue"
@@ -712,55 +774,58 @@ class AgentSession:
             reason = "is_complete flag set"
         elif state.get("error"):
             decision = "end"
-            reason = f"error: {state.get('error')[:50]}"
+            reason = f"error: {str(state.get('error'))[:50]}"
         elif not self._autonomous or max_iterations <= 1:
-            # 단일 실행 모드 (반복 없음)
+            # Single execution mode (no looping)
             decision = "end"
             reason = "single execution mode"
         elif iteration >= max_iterations:
-            # 최대 반복 도달
             decision = "end"
             reason = f"max_iterations reached ({iteration}/{max_iterations})"
         else:
-            # 마지막 응답 확인 (완료 신호 검출)
-            last_output = state.get("last_output", "")
-            if self._is_task_complete(last_output):
-                decision = "end"
-                reason = "task completion signal detected"
+            # Read the structured completion signal from state
+            raw_signal = state.get("completion_signal")
+            if raw_signal:
+                try:
+                    signal = CompletionSignal(raw_signal)
+                except ValueError:
+                    signal = CompletionSignal.NONE
+            else:
+                signal = CompletionSignal.NONE
 
-        # 로깅: 엣지 결정
+            if signal == CompletionSignal.COMPLETE:
+                decision = "end"
+                reason = "[TASK_COMPLETE] signal"
+            elif signal == CompletionSignal.BLOCKED:
+                decision = "end"
+                reason = f"[BLOCKED] {state.get('completion_detail', '')}"
+            elif signal == CompletionSignal.ERROR:
+                decision = "end"
+                reason = f"[ERROR] {state.get('completion_detail', '')}"
+            # CONTINUE / NONE → keep going
+
         if session_logger:
             session_logger.log_graph_edge_decision(
                 from_node="process_output",
                 decision=decision,
                 reason=reason,
-                iteration=iteration
+                iteration=iteration,
             )
 
         return decision
 
     def _is_task_complete(self, output: str) -> bool:
+        """Check whether the output indicates task completion.
+
+        Thin wrapper around the centralized ``detect_completion_signal``
+        from resilience_nodes.
         """
-        작업 완료 여부 판단.
-
-        CLI 출력에서 완료 신호를 감지합니다.
-        """
-        if not output:
-            return False
-
-        completion_signals = [
-            "작업이 완료되었습니다",
-            "Task completed",
-            "완료되었습니다",
-            "Done.",
-            "Finished.",
-        ]
-
-        for signal in completion_signals:
-            if signal.lower() in output.lower():
-                return True
-
-        return False
+        signal, _ = detect_completion_signal(output)
+        return signal in (
+            CompletionSignal.COMPLETE,
+            CompletionSignal.BLOCKED,
+            CompletionSignal.ERROR,
+        )
 
     # ========================================================================
     # Execution Methods
@@ -773,28 +838,28 @@ class AgentSession:
         max_iterations: Optional[int] = None,
         **kwargs,
     ) -> str:
-        """
-        동기식 실행 (결과 반환).
+        """Synchronous-style execution (returns final result).
 
-        autonomous 모드일 경우 난이도 기반 AutonomousGraph 사용:
-        - Easy: 바로 답변
-        - Medium: 답변 + 검토
-        - Hard: TODO 생성 -> 개별 실행 -> 검토 -> 최종 답변
+        In autonomous mode uses the difficulty-based AutonomousGraph.
+        Otherwise runs the simple context_guard -> agent -> process_output loop.
 
         Args:
-            input_text: 사용자 입력 텍스트
-            thread_id: 스레드 ID (체크포인팅용)
-            max_iterations: 최대 반복 횟수 (None이면 기본값 사용)
-            **kwargs: 추가 설정
+            input_text: User input text.
+            thread_id: Thread ID for checkpointing.
+            max_iterations: Override for max iterations.
+            **kwargs: Additional metadata.
 
         Returns:
-            에이전트 응답 텍스트
+            Agent response text.
         """
         import time
         start_time = time.time()
 
         if not self._initialized or not self._graph:
             raise RuntimeError("AgentSession not initialized. Call initialize() first.")
+
+        # Freshness check — log warning or raise if stale
+        self._check_freshness()
 
         self._status = SessionStatus.RUNNING
         self._current_iteration = 0
@@ -804,19 +869,19 @@ class AgentSession:
 
         session_logger = self._get_logger()
 
-        # 로깅: 그래프 실행 시작
+        # Log graph execution start
         if session_logger:
             session_logger.log_graph_execution_start(
                 input_text=input_text,
                 thread_id=thread_id,
                 max_iterations=effective_max_iterations,
-                execution_mode="invoke_autonomous" if self._autonomous else "invoke"
+                execution_mode="invoke_autonomous" if self._autonomous else "invoke",
             )
 
         try:
             config = {"configurable": {"thread_id": thread_id}}
 
-            # Autonomous 모드: 난이도 기반 AutonomousGraph 사용
+            # Autonomous mode: difficulty-based AutonomousGraph
             if self._autonomous and self._autonomous_graph:
                 result = await self._invoke_autonomous(input_text, config, **kwargs)
                 duration_ms = int((time.time() - start_time) * 1000)
@@ -824,14 +889,14 @@ class AgentSession:
                 final_output = result.get("final_answer", "") or result.get("answer", "")
                 has_error = bool(result.get("error"))
 
-                # 로깅: 그래프 실행 완료
+                # Log autonomous execution completion
                 if session_logger:
                     session_logger.log_graph_execution_complete(
                         success=not has_error,
                         total_iterations=result.get("metadata", {}).get("completed_todos", 0),
                         final_output=final_output[:500] if final_output else None,
                         total_duration_ms=duration_ms,
-                        stop_reason="completed" if not has_error else result.get("error")
+                        stop_reason="completed" if not has_error else result.get("error"),
                     )
 
                 if has_error:
@@ -840,30 +905,30 @@ class AgentSession:
 
                 return final_output
 
-            # Non-autonomous 모드: 기존 simple graph 사용
-            initial_state: AgentState = {
-                "messages": [HumanMessage(content=input_text)],
-                "current_step": "start",
-                "last_output": None,
-                "metadata": {
-                    "iteration": 0,
-                    "max_iterations": effective_max_iterations,
-                    **kwargs,
-                },
-                "error": None,
-                "is_complete": False,
-            }
+            # Non-autonomous mode: simple graph
+            initial_state = make_initial_agent_state(
+                input_text,
+                max_iterations=effective_max_iterations,
+                **kwargs,
+            )
+
+            # Record user input to short-term memory
+            if self._memory_manager:
+                try:
+                    self._memory_manager.record_message("user", input_text)
+                except Exception:
+                    logger.debug("Failed to record user message — non-critical", exc_info=True)
 
             result = await self._graph.ainvoke(initial_state, config)
             duration_ms = int((time.time() - start_time) * 1000)
             self._status = SessionStatus.RUNNING
 
-            # 결과 추출
+            # Extract results from final state
             final_output = result.get("last_output", "")
             has_error = bool(result.get("error"))
-            total_iterations = result.get("metadata", {}).get("iteration", 0)
+            total_iterations = result.get("iteration", 0)
 
-            # 로깅: 그래프 실행 완료
+            # Log execution completion
             if session_logger:
                 session_logger.log_graph_execution_complete(
                     success=not has_error,
@@ -885,14 +950,14 @@ class AgentSession:
             self._error_message = str(e)
             logger.exception(f"[{self._session_id}] Error during invoke: {e}")
 
-            # 로깅: 에러
+            # Log error
             if session_logger:
                 session_logger.log_graph_execution_complete(
                     success=False,
                     total_iterations=self._current_iteration,
                     final_output=None,
                     total_duration_ms=duration_ms,
-                    stop_reason=f"exception: {type(e).__name__}"
+                    stop_reason=f"exception: {type(e).__name__}",
                 )
 
             raise
@@ -903,21 +968,20 @@ class AgentSession:
         config: Dict[str, Any],
         **kwargs,
     ) -> Dict[str, Any]:
-        """
-        Autonomous 그래프 실행 (난이도 기반).
+        """Run the autonomous (difficulty-based) graph.
 
         Args:
-            input_text: 사용자 입력
-            config: 실행 설정
-            **kwargs: 추가 메타데이터
+            input_text: User input.
+            config: LangGraph execution config.
+            **kwargs: Extra metadata.
 
         Returns:
-            실행 결과 딕셔너리
+            Final state dict with answer/final_answer.
         """
         if not self._autonomous_graph:
             raise RuntimeError("AutonomousGraph not built")
 
-        # AutonomousGraph 초기 상태 생성
+        # AutonomousGraph initial state
         AutonomousGraph = _get_autonomous_graph_class()
         autonomous_graph_builder = AutonomousGraph(
             model=self._model,
@@ -925,7 +989,7 @@ class AgentSession:
         )
         initial_state = autonomous_graph_builder.get_initial_state(input_text, **kwargs)
 
-        # 그래프 실행
+        # Execute graph
         result = await self._autonomous_graph.ainvoke(initial_state, config)
 
         self._status = SessionStatus.RUNNING
@@ -938,21 +1002,20 @@ class AgentSession:
         config: Dict[str, Any],
         **kwargs,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Autonomous 그래프 스트리밍 실행.
+        """Stream the autonomous (difficulty-based) graph execution.
 
         Args:
-            input_text: 사용자 입력
-            config: 실행 설정
-            **kwargs: 추가 메타데이터
+            input_text: User input.
+            config: LangGraph execution config.
+            **kwargs: Extra metadata.
 
         Yields:
-            각 노드 실행 결과
+            Per-node execution results.
         """
         if not self._autonomous_graph:
             raise RuntimeError("AutonomousGraph not built")
 
-        # AutonomousGraph 초기 상태 생성
+        # AutonomousGraph initial state
         AutonomousGraph = _get_autonomous_graph_class()
         autonomous_graph_builder = AutonomousGraph(
             model=self._model,
@@ -960,7 +1023,7 @@ class AgentSession:
         )
         initial_state = autonomous_graph_builder.get_initial_state(input_text, **kwargs)
 
-        # 그래프 스트리밍 실행
+        # Stream graph execution
         async for event in self._autonomous_graph.astream(initial_state, config):
             yield event
 
@@ -971,26 +1034,28 @@ class AgentSession:
         max_iterations: Optional[int] = None,
         **kwargs,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        스트리밍 실행.
+        """Streaming execution.
 
-        autonomous 모드일 경우 난이도 기반 AutonomousGraph 사용.
+        In autonomous mode uses the difficulty-based AutonomousGraph.
 
         Args:
-            input_text: 사용자 입력 텍스트
-            thread_id: 스레드 ID
-            max_iterations: 최대 반복 횟수
+            input_text: User input text.
+            thread_id: Thread ID for checkpointing.
+            max_iterations: Override for max iterations.
 
         Yields:
-            각 노드 실행 결과
+            Per-node execution results.
         """
         if not self._initialized or not self._graph:
             raise RuntimeError("AgentSession not initialized. Call initialize() first.")
 
+        # Freshness check
+        self._check_freshness()
+
         self._status = SessionStatus.RUNNING
         thread_id = thread_id or self._current_thread_id
 
-        # 그래프 실행 로깅 초기화
+        # Initialize logging for graph execution
         session_logger = self._get_logger()
         start_time = time.time()
         self._current_iteration = 0
@@ -999,7 +1064,7 @@ class AgentSession:
         event_count = 0
         last_event = None
 
-        # 그래프 실행 시작 로깅
+        # Log execution start
         if session_logger:
             session_logger.log_graph_execution_start(
                 input_text=input_text,
@@ -1011,13 +1076,13 @@ class AgentSession:
         try:
             config = {"configurable": {"thread_id": thread_id}}
 
-            # Autonomous 모드: AutonomousGraph 사용
+            # Autonomous mode: AutonomousGraph
             if self._autonomous and self._autonomous_graph:
                 async for event in self._astream_autonomous(input_text, config, **kwargs):
                     event_count += 1
                     last_event = event
 
-                    # 스트림 이벤트 로깅
+                    # Log stream event
                     if session_logger:
                         event_keys = list(event.keys()) if isinstance(event, dict) else []
                         session_logger.log_graph_event(
@@ -1032,25 +1097,25 @@ class AgentSession:
 
                     yield event
             else:
-                # Non-autonomous 모드: 기존 simple graph
-                initial_state: AgentState = {
-                    "messages": [HumanMessage(content=input_text)],
-                    "current_step": "start",
-                    "last_output": None,
-                    "metadata": {
-                        "iteration": 0,
-                        "max_iterations": effective_max_iterations,
-                        **kwargs,
-                    },
-                    "error": None,
-                    "is_complete": False,
-                }
+                # Non-autonomous mode: simple graph
+                initial_state = make_initial_agent_state(
+                    input_text,
+                    max_iterations=effective_max_iterations,
+                    **kwargs,
+                )
+
+                # Record user input to short-term memory
+                if self._memory_manager:
+                    try:
+                        self._memory_manager.record_message("user", input_text)
+                    except Exception:
+                        logger.debug("Failed to record user message — non-critical", exc_info=True)
 
                 async for event in self._graph.astream(initial_state, config):
                     event_count += 1
                     last_event = event
 
-                    # 스트림 이벤트 로깅
+                    # Log stream event
                     if session_logger:
                         event_keys = list(event.keys()) if isinstance(event, dict) else []
                         session_logger.log_graph_event(
@@ -1067,13 +1132,12 @@ class AgentSession:
 
             self._status = SessionStatus.RUNNING
 
-            # 스트리밍 완료 로깅
+            # Log streaming completion
             duration_ms = int((time.time() - start_time) * 1000)
             if session_logger:
-                # 마지막 이벤트에서 출력 추출 시도
+                # Try to extract final output from last event
                 final_output = None
                 if last_event and isinstance(last_event, dict):
-                    # Autonomous 그래프용 키
                     for key in ["final_answer", "direct_answer", "answer", "process_output", "agent", "__end__"]:
                         if key in last_event:
                             node_result = last_event[key]
@@ -1095,7 +1159,7 @@ class AgentSession:
             self._error_message = str(e)
             logger.exception(f"[{self._session_id}] Error during astream: {e}")
 
-            # 에러 로깅
+            # Log error
             duration_ms = int((time.time() - start_time) * 1000)
             if session_logger:
                 session_logger.log_graph_error(
@@ -1121,19 +1185,19 @@ class AgentSession:
         skip_permissions: bool = True,
         **kwargs,
     ) -> Dict[str, Any]:
-        """
-        기존 ClaudeProcess.execute()와 호환되는 실행 메서드.
+        """Execute via the legacy ClaudeProcess.execute() interface.
 
-        Controller에서 기존 방식대로 호출할 수 있습니다.
+        Provides backward compatibility with controllers that call
+        process.execute() directly.
 
         Args:
-            prompt: 실행할 프롬프트
-            timeout: 타임아웃 (초)
-            skip_permissions: 권한 프롬프트 스킵 여부
-            **kwargs: 추가 설정
+            prompt: Prompt text to execute.
+            timeout: Override timeout in seconds.
+            skip_permissions: Skip permission prompts.
+            **kwargs: Additional settings.
 
         Returns:
-            실행 결과 딕셔너리 (output, cost_usd, duration_ms 등)
+            Result dict with output, cost_usd, duration_ms, etc.
         """
         if not self._initialized or not self._model or not self._model.process:
             raise RuntimeError("AgentSession not initialized")
@@ -1141,7 +1205,7 @@ class AgentSession:
         self._status = SessionStatus.RUNNING
 
         try:
-            # 직접 ClaudeProcess.execute() 호출 (기존 호환성)
+            # Delegate to ClaudeProcess.execute() for backward compatibility
             result = await self._model.process.execute(
                 prompt=prompt,
                 timeout=timeout or self._timeout,
@@ -1163,12 +1227,20 @@ class AgentSession:
     # ========================================================================
 
     async def cleanup(self):
-        """
-        AgentSession 정리.
+        """Clean up the AgentSession and release all resources.
 
-        ClaudeCLIChatModel과 관련 리소스를 정리합니다.
+        Flushes short-term memory to long-term before shutting down.
         """
         logger.info(f"[{self._session_id}] Cleaning up AgentSession...")
+
+        # Flush memory before shutdown
+        if self._memory_manager:
+            try:
+                self._memory_manager.auto_flush()
+                logger.debug(f"[{self._session_id}] Memory flushed to long-term storage")
+            except Exception:
+                logger.debug("Failed to flush memory — non-critical", exc_info=True)
+            self._memory_manager = None
 
         if self._model:
             await self._model.cleanup()
@@ -1179,14 +1251,14 @@ class AgentSession:
         self._initialized = False
         self._status = SessionStatus.STOPPED
 
-        logger.info(f"[{self._session_id}] ✅ AgentSession cleaned up")
+        logger.info(f"[{self._session_id}] AgentSession cleaned up")
 
     async def stop(self):
-        """세션 중지 (cleanup의 별칭)"""
+        """Stop the session (alias for cleanup)."""
         await self.cleanup()
 
     def is_alive(self) -> bool:
-        """프로세스가 살아있는지 확인"""
+        """Check whether the underlying process is still running."""
         if self._model and self._model.process:
             return self._model.process.is_alive()
         return False
@@ -1196,17 +1268,14 @@ class AgentSession:
     # ========================================================================
 
     def get_session_info(self, pod_name: Optional[str] = None, pod_ip: Optional[str] = None) -> SessionInfo:
-        """
-        SessionInfo 객체 반환.
-
-        기존 SessionManager와의 호환성을 위해 제공합니다.
+        """Return a SessionInfo for backward compatibility with SessionManager.
 
         Args:
-            pod_name: Pod 이름 (선택)
-            pod_ip: Pod IP (선택)
+            pod_name: Optional pod name.
+            pod_ip: Optional pod IP.
 
         Returns:
-            SessionInfo 인스턴스
+            SessionInfo instance.
         """
         return SessionInfo(
             session_id=self._session_id,
@@ -1232,14 +1301,13 @@ class AgentSession:
     # ========================================================================
 
     def get_state(self, thread_id: Optional[str] = None) -> Optional[AgentState]:
-        """
-        현재 그래프 상태 조회 (체크포인팅 필요).
+        """Get current graph state (requires checkpointing).
 
         Args:
-            thread_id: 스레드 ID
+            thread_id: Thread ID.
 
         Returns:
-            현재 상태 또는 None
+            Current state or None.
         """
         if not self._enable_checkpointing or not self._graph:
             return None
@@ -1253,14 +1321,13 @@ class AgentSession:
             return None
 
     def get_history(self, thread_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        실행 히스토리 조회 (체크포인팅 필요).
+        """Get execution history (requires checkpointing).
 
         Args:
-            thread_id: 스레드 ID
+            thread_id: Thread ID.
 
         Returns:
-            히스토리 리스트
+            List of state snapshots.
         """
         if not self._enable_checkpointing or not self._graph:
             return []
@@ -1274,14 +1341,13 @@ class AgentSession:
             return []
 
     def visualize(self, autonomous: bool = True) -> Optional[bytes]:
-        """
-        그래프 시각화 (PNG 이미지 반환).
+        """Render the graph as a PNG image.
 
         Args:
-            autonomous: True이면 AutonomousGraph, False이면 기본 그래프
+            autonomous: If True, visualize AutonomousGraph; else simple graph.
 
         Returns:
-            PNG 이미지 바이트 또는 None
+            PNG image bytes or None.
         """
         graph_to_visualize = None
 
@@ -1300,14 +1366,13 @@ class AgentSession:
             return None
 
     def get_mermaid_diagram(self, autonomous: bool = True) -> Optional[str]:
-        """
-        Mermaid 다이어그램 문자열 반환.
+        """Return a Mermaid diagram string for the graph.
 
         Args:
-            autonomous: True이면 AutonomousGraph, False이면 기본 그래프
+            autonomous: If True, render AutonomousGraph; else simple graph.
 
         Returns:
-            Mermaid 다이어그램 문자열 또는 None
+            Mermaid diagram string or None.
         """
         graph_to_visualize = None
 

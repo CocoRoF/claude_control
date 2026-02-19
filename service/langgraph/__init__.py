@@ -1,17 +1,19 @@
-"""
-LangGraph Integration Module
+"""LangGraph Integration Module.
 
-Claude CLI와 LangGraph를 통합하여 상태 관리 기능과 CLI의 파일 관리/MCP 기능을
-동시에 활용합니다.
+Integrates Claude CLI with LangGraph to provide state-driven execution
+with resilience (context guard, model fallback, completion detection)
+and session memory (long-term / short-term).
 
-핵심 컴포넌트:
-- ClaudeCLIChatModel: ClaudeProcess를 래핑한 LangChain ChatModel
-- AgentSession: CompiledStateGraph 기반 에이전트 세션
-- AgentSessionManager: AgentSession 관리자
-- AutonomousGraph: 난이도 기반 자율 실행 그래프
+Key components:
+    - ClaudeCLIChatModel: wraps ClaudeProcess as a LangChain ChatModel
+    - AgentSession: CompiledStateGraph-based agent session
+    - AgentSessionManager: manages AgentSession lifecycle
+    - AutonomousGraph: difficulty-based autonomous execution graph
+    - AgentState / AutonomousState: enhanced state schemas (from state.py)
 
-사용 예:
-    # 방법 1: AgentSession 직접 생성
+Usage::
+
+    # Option 1: Create AgentSession directly
     from service.langgraph import AgentSession
 
     agent = await AgentSession.create(
@@ -20,15 +22,15 @@ Claude CLI와 LangGraph를 통합하여 상태 관리 기능과 CLI의 파일 �
     )
     result = await agent.invoke("Hello")
 
-    # 방법 2: AgentSessionManager 사용
+    # Option 2: Use AgentSessionManager
     from service.langgraph import get_agent_session_manager
 
     manager = get_agent_session_manager()
     agent = await manager.create_agent_session(request)
     result = await agent.invoke("Hello")
 
-    # 방법 3: AutonomousGraph 직접 사용
-    from service.langgraph import AutonomousGraph, AutonomousState
+    # Option 3: Use AutonomousGraph directly
+    from service.langgraph import AutonomousGraph
 
     graph = AutonomousGraph(model)
     compiled = graph.build()
@@ -36,15 +38,18 @@ Claude CLI와 LangGraph를 통합하여 상태 관리 기능과 CLI의 파일 �
 """
 
 from service.langgraph.claude_cli_model import ClaudeCLIChatModel
-from service.langgraph.agent_session import AgentSession, AgentState
+from service.langgraph.agent_session import AgentSession
 from service.langgraph.agent_session_manager import (
     AgentSessionManager,
     get_agent_session_manager,
     reset_agent_session_manager,
 )
-from service.langgraph.autonomous_graph import (
-    AutonomousGraph,
+from service.langgraph.autonomous_graph import AutonomousGraph
+from service.langgraph.checkpointer import create_checkpointer
+from service.langgraph.state import (
+    AgentState,
     AutonomousState,
+    CompletionSignal,
     Difficulty,
     ReviewResult,
     TodoItem,
@@ -64,8 +69,11 @@ __all__ = [
     # Autonomous Graph
     "AutonomousGraph",
     "AutonomousState",
+    "CompletionSignal",
     "Difficulty",
     "ReviewResult",
     "TodoItem",
     "TodoStatus",
+    # Checkpointer
+    "create_checkpointer",
 ]

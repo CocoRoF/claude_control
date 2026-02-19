@@ -87,6 +87,12 @@ function selectSession(sessionId) {
     if (session) {
         showCommandPanel(session);
         showLogsPanel(session);
+
+        // Refresh graph if graph tab is active
+        const activeTab = document.querySelector('.tab-btn.active')?.dataset?.tab;
+        if (activeTab === 'graph') {
+            refreshGraphTab();
+        }
     }
 }
 

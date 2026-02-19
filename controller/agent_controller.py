@@ -901,3 +901,295 @@ async def get_manager_dashboard(
         active_delegations=active_delegations,
         completed_delegations=completed_delegations
     )
+
+
+# ============================================================================
+# Graph Introspection API
+# ============================================================================
+
+
+class GraphNodeInfo(BaseModel):
+    """Single node/state in the graph."""
+    id: str
+    label: str
+    type: str = "node"  # node | start | end
+    description: str = ""
+    prompt_template: Optional[str] = None
+    metadata: dict = {}
+
+
+class GraphEdgeInfo(BaseModel):
+    """Single edge in the graph."""
+    source: str
+    target: str
+    label: str = ""
+    type: str = "edge"  # edge | conditional
+    condition_map: Optional[dict] = None
+
+
+class GraphStructure(BaseModel):
+    """Complete graph topology for visualization."""
+    session_id: str
+    session_name: str = ""
+    graph_type: str = "simple"  # simple | autonomous
+    nodes: list[GraphNodeInfo] = []
+    edges: list[GraphEdgeInfo] = []
+
+
+def _build_simple_graph_structure(session_id: str, session_name: str) -> GraphStructure:
+    """Build the simple (non-autonomous) graph structure for visualization."""
+    nodes = [
+        GraphNodeInfo(
+            id="__start__", label="START", type="start",
+            description="Entry point of the graph.",
+        ),
+        GraphNodeInfo(
+            id="context_guard", label="Context Guard", type="node",
+            description=(
+                "Checks the context window budget. "
+                "If token count exceeds the warn/block threshold, "
+                "auto-compacts messages to stay within limits."
+            ),
+            metadata={
+                "warn_ratio": 0.75,
+                "block_ratio": 0.90,
+                "auto_compact_keep": 20,
+            },
+        ),
+        GraphNodeInfo(
+            id="agent", label="Agent", type="node",
+            description=(
+                "Core agent node — invokes the Claude CLI model with the "
+                "current message history, records the response to state, "
+                "and updates short-term memory."
+            ),
+        ),
+        GraphNodeInfo(
+            id="process_output", label="Process Output", type="node",
+            description=(
+                "Increments the iteration counter and inspects the last "
+                "response for a completion signal (e.g. TASK_COMPLETE). "
+                "Decides whether to continue or end."
+            ),
+            metadata={
+                "signals": ["TASK_COMPLETE", "DONE", "FINISHED"],
+            },
+        ),
+        GraphNodeInfo(
+            id="__end__", label="END", type="end",
+            description="Terminal state — execution is complete.",
+        ),
+    ]
+    edges = [
+        GraphEdgeInfo(source="__start__", target="context_guard", label=""),
+        GraphEdgeInfo(source="context_guard", target="agent", label=""),
+        GraphEdgeInfo(source="agent", target="process_output", label=""),
+        GraphEdgeInfo(
+            source="process_output", target="context_guard",
+            label="continue", type="conditional",
+            condition_map={"continue": "context_guard", "end": "__end__"},
+        ),
+        GraphEdgeInfo(
+            source="process_output", target="__end__",
+            label="end", type="conditional",
+            condition_map={"continue": "context_guard", "end": "__end__"},
+        ),
+    ]
+    return GraphStructure(
+        session_id=session_id,
+        session_name=session_name,
+        graph_type="simple",
+        nodes=nodes,
+        edges=edges,
+    )
+
+
+def _build_autonomous_graph_structure(session_id: str, session_name: str) -> GraphStructure:
+    """Build the autonomous (difficulty-based) graph structure for visualization."""
+    from service.prompt.sections import AutonomousPrompts
+
+    nodes = [
+        GraphNodeInfo(
+            id="__start__", label="START", type="start",
+            description="Entry point of the autonomous graph.",
+        ),
+        GraphNodeInfo(
+            id="classify_difficulty", label="Classify Difficulty", type="node",
+            description=(
+                "Analyzes the input task and classifies it as easy, medium, or hard. "
+                "Routes to the appropriate execution path."
+            ),
+            prompt_template=AutonomousPrompts.classify_difficulty(),
+            metadata={"outputs": ["easy", "medium", "hard"]},
+        ),
+        # --- Easy path ---
+        GraphNodeInfo(
+            id="direct_answer", label="Direct Answer", type="node",
+            description=(
+                "Handles easy tasks — provides a direct answer in a single "
+                "model call without review or planning."
+            ),
+            metadata={"path": "easy"},
+        ),
+        # --- Medium path ---
+        GraphNodeInfo(
+            id="answer", label="Answer", type="node",
+            description=(
+                "Generates an answer for medium-complexity tasks. "
+                "The answer will be reviewed for quality."
+            ),
+            metadata={"path": "medium"},
+        ),
+        GraphNodeInfo(
+            id="review", label="Review", type="node",
+            description=(
+                "Quality reviewer — evaluates the answer for accuracy and "
+                "completeness. Produces VERDICT: approved or rejected."
+            ),
+            prompt_template=AutonomousPrompts.review(),
+            metadata={"path": "medium", "max_retries": 3},
+        ),
+        # --- Hard path ---
+        GraphNodeInfo(
+            id="create_todos", label="Create TODOs", type="node",
+            description=(
+                "Task planner — decomposes a complex task into a structured "
+                "JSON list of TODO items with dependencies."
+            ),
+            prompt_template=AutonomousPrompts.create_todos(),
+            metadata={"path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="execute_todo", label="Execute TODO", type="node",
+            description=(
+                "Executes a single TODO item from the plan, using context "
+                "from previously completed items."
+            ),
+            prompt_template=AutonomousPrompts.execute_todo(),
+            metadata={"path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="check_progress", label="Check Progress", type="node",
+            description=(
+                "Checks whether all TODO items are completed. "
+                "Routes to the next TODO or to the final review."
+            ),
+            metadata={"path": "hard", "outputs": ["continue", "complete"]},
+        ),
+        GraphNodeInfo(
+            id="final_review", label="Final Review", type="node",
+            description=(
+                "Conducts a comprehensive review of all completed TODO items "
+                "to ensure the original request is fully addressed."
+            ),
+            prompt_template=AutonomousPrompts.final_review(),
+            metadata={"path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="final_answer", label="Final Answer", type="node",
+            description=(
+                "Synthesizes all completed work and review feedback into "
+                "a final, polished, comprehensive answer."
+            ),
+            prompt_template=AutonomousPrompts.final_answer(),
+            metadata={"path": "hard"},
+        ),
+        GraphNodeInfo(
+            id="__end__", label="END", type="end",
+            description="Terminal state — autonomous execution is complete.",
+        ),
+    ]
+
+    edges = [
+        # START -> classify
+        GraphEdgeInfo(source="__start__", target="classify_difficulty", label=""),
+
+        # classify -> [easy/medium/hard]  (conditional)
+        GraphEdgeInfo(
+            source="classify_difficulty", target="direct_answer",
+            label="easy", type="conditional",
+            condition_map={"easy": "direct_answer", "medium": "answer", "hard": "create_todos"},
+        ),
+        GraphEdgeInfo(
+            source="classify_difficulty", target="answer",
+            label="medium", type="conditional",
+            condition_map={"easy": "direct_answer", "medium": "answer", "hard": "create_todos"},
+        ),
+        GraphEdgeInfo(
+            source="classify_difficulty", target="create_todos",
+            label="hard", type="conditional",
+            condition_map={"easy": "direct_answer", "medium": "answer", "hard": "create_todos"},
+        ),
+
+        # Easy: direct_answer -> END
+        GraphEdgeInfo(source="direct_answer", target="__end__", label=""),
+
+        # Medium: answer -> review, review -> [approved/retry]
+        GraphEdgeInfo(source="answer", target="review", label=""),
+        GraphEdgeInfo(
+            source="review", target="__end__",
+            label="approved", type="conditional",
+            condition_map={"approved": "__end__", "retry": "answer"},
+        ),
+        GraphEdgeInfo(
+            source="review", target="answer",
+            label="retry", type="conditional",
+            condition_map={"approved": "__end__", "retry": "answer"},
+        ),
+
+        # Hard: create_todos -> execute_todo -> check_progress -> [continue/complete]
+        GraphEdgeInfo(source="create_todos", target="execute_todo", label=""),
+        GraphEdgeInfo(source="execute_todo", target="check_progress", label=""),
+        GraphEdgeInfo(
+            source="check_progress", target="execute_todo",
+            label="continue", type="conditional",
+            condition_map={"continue": "execute_todo", "complete": "final_review"},
+        ),
+        GraphEdgeInfo(
+            source="check_progress", target="final_review",
+            label="complete", type="conditional",
+            condition_map={"continue": "execute_todo", "complete": "final_review"},
+        ),
+        GraphEdgeInfo(source="final_review", target="final_answer", label=""),
+        GraphEdgeInfo(source="final_answer", target="__end__", label=""),
+    ]
+
+    return GraphStructure(
+        session_id=session_id,
+        session_name=session_name,
+        graph_type="autonomous",
+        nodes=nodes,
+        edges=edges,
+    )
+
+
+@router.get("/{session_id}/graph", response_model=GraphStructure)
+async def get_session_graph(
+    session_id: str = Path(..., description="Session ID"),
+):
+    """
+    Get the LangGraph graph structure for a session.
+
+    Returns all nodes, edges, conditional edges, prompt templates,
+    and metadata for complete graph visualization.
+    """
+    agent: Optional[AgentSession] = agent_manager.get_agent(session_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+    session_name = agent.session_name or session_id[:8]
+    is_autonomous = agent.autonomous
+
+    if is_autonomous:
+        graph = _build_autonomous_graph_structure(session_id, session_name)
+        # Also include the inner simple graph as metadata
+        simple = _build_simple_graph_structure(session_id, session_name)
+        graph.nodes[0].metadata["inner_graph"] = {
+            "description": "The inner simple graph runs inside each autonomous node that invokes the model.",
+            "nodes": [n.model_dump() for n in simple.nodes],
+            "edges": [e.model_dump() for e in simple.edges],
+        }
+    else:
+        graph = _build_simple_graph_structure(session_id, session_name)
+
+    return graph
