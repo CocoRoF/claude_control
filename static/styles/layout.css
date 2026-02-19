@@ -8,7 +8,8 @@
 .app-container {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
 }
 
 /* ========================================
@@ -335,18 +336,22 @@
 
 .tab-content {
     flex: 1;
+    min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .tab-pane {
     display: none;
-    height: 100%;
-    overflow: auto;
 }
 
 .tab-pane.active {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 
 /* ========================================

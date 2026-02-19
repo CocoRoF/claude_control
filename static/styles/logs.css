@@ -7,8 +7,10 @@
 .logs-panel {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
     padding: 24px;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .logs-header {
@@ -18,6 +20,7 @@
     margin-bottom: 20px;
     flex-wrap: wrap;
     gap: 12px;
+    flex-shrink: 0;
 }
 
 .logs-header h3 {
@@ -61,6 +64,7 @@
 /* Logs Content */
 .logs-content {
     flex: 1;
+    min-height: 0;
     overflow: auto;
     background-color: var(--bg-secondary);
     border-radius: var(--border-radius);
