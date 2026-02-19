@@ -16,10 +16,8 @@
     const ASSET_BASE = '/static/assets/';
     const ASSET_PACKS = {
         commercial: ASSET_BASE + 'kenney_city-kit-commercial_2.1/Models/GLB format/',
-        industrial: ASSET_BASE + 'kenney_city-kit-industrial_1.0/Models/GLB format/',
         roads: ASSET_BASE + 'kenney_city-kit-roads/Models/GLB format/',
         suburban: ASSET_BASE + 'kenney_city-kit-suburban_20/Models/GLB format/',
-        characters: ASSET_BASE + 'kenney_mini-characters/Models/GLB format/',
         survival: ASSET_BASE + 'kenney_survival-kit/Models/GLB format/',
         minigolf: ASSET_BASE + 'kenney_minigolf-kit/Models/GLB format/',
         market: ASSET_BASE + 'kenney_mini-market/Models/GLB format/'
@@ -42,21 +40,11 @@
             k: { pack: 'commercial', file: 'building-k.glb' },
             l: { pack: 'commercial', file: 'building-l.glb' },
             skyscraperA: { pack: 'commercial', file: 'building-skyscraper-a.glb' },
-            skyscraperB: { pack: 'commercial', file: 'building-skyscraper-b.glb' },
-            skyscraperC: { pack: 'commercial', file: 'building-skyscraper-c.glb' }
+            skyscraperB: { pack: 'commercial', file: 'building-skyscraper-b.glb' }
         },
 
-        // Suburban buildings
+        // Suburban path stones (ground tiles)
         suburban: {
-            typeA: { pack: 'suburban', file: 'building-type-a.glb' },
-            typeB: { pack: 'suburban', file: 'building-type-b.glb' },
-            typeC: { pack: 'suburban', file: 'building-type-c.glb' },
-            typeD: { pack: 'suburban', file: 'building-type-d.glb' },
-            typeE: { pack: 'suburban', file: 'building-type-e.glb' },
-            typeF: { pack: 'suburban', file: 'building-type-f.glb' },
-            typeG: { pack: 'suburban', file: 'building-type-g.glb' },
-            typeH: { pack: 'suburban', file: 'building-type-h.glb' },
-            // Path stones (ground tiles)
             pathStonesShort: { pack: 'suburban', file: 'path-stones-short.glb' },
             pathStonesLong: { pack: 'suburban', file: 'path-stones-long.glb' },
             pathStonesMessy: { pack: 'suburban', file: 'path-stones-messy.glb' }
@@ -74,31 +62,7 @@
 
         // Road tiles (ground)
         tile: {
-            high: { pack: 'roads', file: 'tile-high.glb' },
             low: { pack: 'roads', file: 'tile-low.glb' }
-        },
-
-        // Details
-        detail: {
-            awning: { pack: 'commercial', file: 'detail-awning.glb' },
-            awningWide: { pack: 'commercial', file: 'detail-awning-wide.glb' },
-            parasolA: { pack: 'commercial', file: 'detail-parasol-a.glb' },
-            parasolB: { pack: 'commercial', file: 'detail-parasol-b.glb' }
-        },
-
-        // Nature
-        nature: {
-            treeLarge: { pack: 'suburban', file: 'tree-large.glb' },
-            treeSmall: { pack: 'suburban', file: 'tree-small.glb' },
-            planter: { pack: 'suburban', file: 'planter.glb' }
-        },
-
-        // Paths and driveways
-        path: {
-            long: { pack: 'suburban', file: 'path-long.glb' },
-            short: { pack: 'suburban', file: 'path-short.glb' },
-            drivewayLong: { pack: 'suburban', file: 'driveway-long.glb' },
-            drivewayShort: { pack: 'suburban', file: 'driveway-short.glb' }
         },
 
         // Survival Kit - Park Elements
@@ -108,7 +72,6 @@
             treeTall: { pack: 'survival', file: 'tree-tall.glb' },
             treeAutumn: { pack: 'survival', file: 'tree-autumn.glb' },
             treeAutumnTall: { pack: 'survival', file: 'tree-autumn-tall.glb' },
-            treeTrunk: { pack: 'survival', file: 'tree-trunk.glb' },
             treeLog: { pack: 'survival', file: 'tree-log.glb' },
             treeLogSmall: { pack: 'survival', file: 'tree-log-small.glb' },
 
@@ -125,59 +88,26 @@
             patchGrass: { pack: 'survival', file: 'patch-grass.glb' },
             patchGrassLarge: { pack: 'survival', file: 'patch-grass-large.glb' },
 
-            // Campfire and facilities
+            // Campfire
             campfirePit: { pack: 'survival', file: 'campfire-pit.glb' },
-            campfireStand: { pack: 'survival', file: 'campfire-stand.glb' },
-
-            // Structures
-            tent: { pack: 'survival', file: 'tent.glb' },
-            tentCanvas: { pack: 'survival', file: 'tent-canvas.glb' },
 
             // Props
             barrel: { pack: 'survival', file: 'barrel.glb' },
             boxLarge: { pack: 'survival', file: 'box-large.glb' },
             bucket: { pack: 'survival', file: 'bucket.glb' },
-            chest: { pack: 'survival', file: 'chest.glb' },
             metalPanel: { pack: 'survival', file: 'metal-panel.glb' },
             signpost: { pack: 'survival', file: 'signpost.glb' },
             signpostSingle: { pack: 'survival', file: 'signpost-single.glb' },
 
             // Floors/Tiles
-            floor: { pack: 'survival', file: 'floor.glb' },
-            floorOld: { pack: 'survival', file: 'floor-old.glb' },
-
-            // Workbench (can serve as bench/seating)
-            workbench: { pack: 'survival', file: 'workbench.glb' },
-
-            // Fence
-            fence: { pack: 'survival', file: 'fence.glb' },
-            fenceDoorway: { pack: 'survival', file: 'fence-doorway.glb' }
+            floorOld: { pack: 'survival', file: 'floor-old.glb' }
         },
 
-        // Minigolf Kit - Park Ground Tiles
+        // Minigolf Kit - Park Ground Tiles (only tiles used in layout)
         minigolf: {
-            // Ground tiles (grass)
             open: { pack: 'minigolf', file: 'open.glb' },
-            block: { pack: 'minigolf', file: 'block.glb' },
-            blockBorders: { pack: 'minigolf', file: 'block-borders.glb' },
             corner: { pack: 'minigolf', file: 'corner.glb' },
-            innerCorner: { pack: 'minigolf', file: 'inner-corner.glb' },
-            side: { pack: 'minigolf', file: 'side.glb' },
-            end: { pack: 'minigolf', file: 'end.glb' },
-
-            // Decorative elements
-            hillRound: { pack: 'minigolf', file: 'hill-round.glb' },
-            hillSquare: { pack: 'minigolf', file: 'hill-square.glb' },
-            hillCorner: { pack: 'minigolf', file: 'hill-corner.glb' },
-            bump: { pack: 'minigolf', file: 'bump.glb' },
-            crest: { pack: 'minigolf', file: 'crest.glb' },
-
-            // Props
-            flagRed: { pack: 'minigolf', file: 'flag-red.glb' },
-            flagGreen: { pack: 'minigolf', file: 'flag-green.glb' },
-            flagBlue: { pack: 'minigolf', file: 'flag-blue.glb' },
-            windmill: { pack: 'minigolf', file: 'windmill.glb' },
-            castle: { pack: 'minigolf', file: 'castle.glb' }
+            side: { pack: 'minigolf', file: 'side.glb' }
         },
 
         // Mini-Market Kit - Floor Tiles
@@ -263,29 +193,28 @@
 
             // Essential models for the city
             const essentialKeys = [
+                // Buildings (a-l + 2 skyscrapers)
                 'building/a', 'building/b', 'building/c', 'building/d',
                 'building/e', 'building/f', 'building/g', 'building/h',
+                'building/i', 'building/j', 'building/k', 'building/l',
                 'building/skyscraperA', 'building/skyscraperB',
+                // Roads
                 'road/straight', 'road/bend', 'road/crossing', 'road/crossroad', 'road/intersection', 'road/end',
+                // Concrete tile
                 'tile/low',
-                'nature/treeLarge', 'nature/treeSmall', 'nature/planter',
-                // Suburban path stones
+                // Suburban path stones (ground tiles)
                 'suburban/pathStonesShort', 'suburban/pathStonesLong', 'suburban/pathStonesMessy',
-                // Park assets from survival kit
+                // Park assets from survival kit (only those placed in NATURE array)
                 'park/tree', 'park/treeTall', 'park/treeAutumn', 'park/treeAutumnTall',
-                'park/treeTrunk', 'park/treeLog', 'park/treeLogSmall',
+                'park/treeLog', 'park/treeLogSmall',
                 'park/rockA', 'park/rockB', 'park/rockC', 'park/rockFlat', 'park/rockFlatGrass',
                 'park/grass', 'park/grassLarge', 'park/patchGrass', 'park/patchGrassLarge',
-                'park/campfirePit', 'park/campfireStand',
-                'park/tent', 'park/tentCanvas',
-                'park/barrel', 'park/boxLarge', 'park/bucket', 'park/chest', 'park/metalPanel', 'park/signpost', 'park/signpostSingle',
-                'park/floor', 'park/floorOld',
-                'park/workbench', 'park/fence', 'park/fenceDoorway',
-                // Minigolf grass tiles for park ground
-                'minigolf/open', 'minigolf/block', 'minigolf/blockBorders',
-                'minigolf/corner', 'minigolf/innerCorner', 'minigolf/side', 'minigolf/end',
-                'minigolf/hillRound', 'minigolf/bump', 'minigolf/crest',
-                'minigolf/flagGreen', 'minigolf/windmill',
+                'park/campfirePit',
+                'park/barrel', 'park/boxLarge', 'park/bucket', 'park/metalPanel',
+                'park/signpost', 'park/signpostSingle',
+                'park/floorOld',
+                // Minigolf grass tiles for park ground (only used: open, corner, side)
+                'minigolf/open', 'minigolf/corner', 'minigolf/side',
                 // Mini-market floor tiles
                 'market/floor'
             ];

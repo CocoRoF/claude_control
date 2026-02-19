@@ -5,6 +5,12 @@
 // Session to delete (for confirmation modal)
 let sessionToDelete = null;
 
+/** Cached deleted sessions */
+let _deletedSessions = [];
+
+/** Whether deleted sessions section is expanded */
+let _deletedSectionOpen = false;
+
 /**
  * Load all sessions from API
  */
@@ -310,8 +316,227 @@ async function confirmDeleteSession() {
 
         hideDeleteSessionModal();
         await loadSessions();
+        await loadDeletedSessions();
         showSuccess('Session deleted successfully');
     } catch (error) {
         showError('Failed to delete session: ' + error.message);
+    }
+}
+
+// ========================================================================
+// Deleted Sessions (Sidebar)
+// ========================================================================
+
+/**
+ * Toggle the deleted sessions section visibility.
+ */
+function toggleDeletedSessions() {
+    _deletedSectionOpen = !_deletedSectionOpen;
+    const list = document.getElementById('deleted-sessions-list');
+    const icon = document.getElementById('deleted-toggle-icon');
+    if (list) list.classList.toggle('hidden', !_deletedSectionOpen);
+    if (icon) icon.textContent = _deletedSectionOpen ? '▼' : '▶';
+
+    // Lazy-load on first open
+    if (_deletedSectionOpen && _deletedSessions.length === 0) {
+        loadDeletedSessions();
+    }
+}
+
+/**
+ * Load deleted sessions from store API.
+ */
+async function loadDeletedSessions() {
+    const container = document.getElementById('deleted-sessions-list');
+    if (!container) return;
+
+    try {
+        _deletedSessions = await apiCall('/api/agents/store/deleted');
+        renderDeletedSessionsList(container);
+
+        // Update badge count
+        const badge = document.getElementById('deleted-count-badge');
+        if (badge) badge.textContent = _deletedSessions.length;
+
+        // Auto-expand if there are deleted sessions
+        if (_deletedSessions.length > 0 && !_deletedSectionOpen) {
+            _deletedSectionOpen = true;
+            container.classList.remove('hidden');
+            const icon = document.getElementById('deleted-toggle-icon');
+            if (icon) icon.textContent = '▼';
+        }
+    } catch (error) {
+        container.innerHTML = `
+            <div class="empty-state-small">
+                <p>Failed to load</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Render the deleted sessions list inside the sidebar.
+ */
+function renderDeletedSessionsList(container) {
+    if (_deletedSessions.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state-small">
+                <p>No deleted sessions</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = _deletedSessions.map(s => {
+        const name = s.session_name || s.session_id?.substring(0, 8) || 'Unknown';
+        const roleClass = s.role === 'manager' ? 'role-manager' : 'role-worker';
+        const roleLabel = s.role === 'manager' ? 'M' : 'W';
+        const isSelected = s.session_id === state.selectedSessionId;
+        return `
+            <div class="session-item deleted-session-item ${isSelected ? 'selected' : ''}" onclick="selectDeletedSession('${s.session_id}')">
+                <span class="session-status-dot stopped"></span>
+                <div class="session-info">
+                    <div class="session-name">
+                        <span class="role-badge ${roleClass}">${roleLabel}</span>
+                        ${escapeHtml(name)}
+                    </div>
+                    <div class="session-id">${s.session_id?.substring(0, 8)}...</div>
+                </div>
+                <div class="session-actions">
+                    <button class="btn btn-icon btn-sm" onclick="event.stopPropagation(); restoreSession('${s.session_id}')" title="Restore">↻</button>
+                    <button class="btn btn-icon btn-sm btn-danger-icon" onclick="event.stopPropagation(); permanentDeleteSession('${s.session_id}')" title="Permanently Delete">✕</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Select a deleted session — set it as the active session so all tabs work.
+ */
+function selectDeletedSession(sessionId) {
+    const data = _deletedSessions.find(s => s.session_id === sessionId);
+    if (!data) return;
+
+    // Save current session's input before switching
+    saveCurrentSessionInput();
+
+    // Set as selected session (same as live sessions)
+    state.selectedSessionId = sessionId;
+
+    // Invalidate all tab caches so they re-fetch for this session
+    _storageLastSessionId = null;
+    _dashboardLastSessionId = null;
+    _infoLastSessionId = null;
+    if (typeof graphState !== 'undefined') {
+        graphState._lastGraphSessionId = null;
+    }
+
+    // Re-render both lists (live sessions deselect, deleted highlights)
+    renderSessionList();
+    const deletedContainer = document.getElementById('deleted-sessions-list');
+    if (deletedContainer) renderDeletedSessionsList(deletedContainer);
+
+    // Show command panel header with deleted session info
+    _showDeletedSessionPanel(data);
+
+    // Show logs panel header
+    document.getElementById('no-session-logs-message')?.classList.add('hidden');
+    document.getElementById('logs-panel')?.classList.remove('hidden');
+    const logsTitle = document.getElementById('logs-session-title');
+    if (logsTitle) logsTitle.textContent = `Logs: ${data.session_name || sessionId.substring(0, 8)} (deleted)`;
+
+    // Refresh whichever tab is currently active
+    const activeTab = document.querySelector('.tab-btn.active')?.dataset?.tab;
+    if (activeTab === 'info') refreshInfoTab();
+    else if (activeTab === 'logs') loadSessionLogs();
+    else if (activeTab === 'storage') refreshStorage();
+    else if (activeTab === 'graph') refreshGraphTab();
+    else if (activeTab === 'dashboard') refreshManagerDashboard();
+}
+
+/**
+ * Show command panel header for a deleted session (read-only, no exec).
+ */
+function _showDeletedSessionPanel(session) {
+    document.getElementById('no-session-message').classList.add('hidden');
+    document.getElementById('command-panel').classList.remove('hidden');
+
+    const roleLabel = session.role === 'manager' ? 'Manager' : 'Worker';
+    const roleClass = session.role === 'manager' ? 'role-manager' : 'role-worker';
+
+    const infoContainer = document.getElementById('selected-session-info');
+    infoContainer.innerHTML = `
+        <h4>
+            <span class="role-badge-large ${roleClass}">${roleLabel}</span>
+            ${escapeHtml(session.session_name || 'Unnamed Session')}
+            <span style="color: var(--text-tertiary); font-size: 0.75rem; margin-left: 8px;">🗑️ Deleted</span>
+        </h4>
+        <div class="session-meta">
+            <span>ID: ${session.session_id.substring(0, 8)}...</span>
+            <span>Status: Deleted</span>
+            <span>Model: ${session.model || 'Default'}</span>
+            ${session.pod_name ? `<span>Pod: ${session.pod_name}</span>` : ''}
+        </div>
+    `;
+
+    // Update command options (read-only)
+    document.getElementById('command-timeout').value = session.timeout || 1800;
+    document.getElementById('command-max-turns').value = session.max_turns || 100;
+    document.getElementById('autonomous-max-iterations').value = session.autonomous_max_iterations || 100;
+
+    // Update session mode badge
+    const modeBadge = document.getElementById('session-mode-badge');
+    if (modeBadge) {
+        if (session.autonomous) {
+            modeBadge.textContent = 'Autonomous';
+            modeBadge.classList.add('autonomous');
+            modeBadge.classList.remove('single');
+        } else {
+            modeBadge.textContent = 'Single';
+            modeBadge.classList.add('single');
+            modeBadge.classList.remove('autonomous');
+        }
+    }
+
+    // Clear command I/O for deleted session
+    document.getElementById('command-input').value = '';
+    document.getElementById('command-output').textContent = 'Session is deleted — command execution unavailable';
+
+    // Hide dashboard tab button (deleted sessions can't have live dashboard)
+    const dashboardTabBtn = document.getElementById('dashboard-tab-btn');
+    if (dashboardTabBtn) dashboardTabBtn.classList.add('hidden');
+}
+
+/**
+ * Restore a deleted session (re-create with same params).
+ */
+async function restoreSession(sessionId) {
+    try {
+        const result = await apiCall(`/api/agents/${sessionId}/restore`, { method: 'POST' });
+        showSuccess(`Session restored: ${result.session_name || result.session_id?.substring(0, 8)}...`);
+        await loadSessions();
+        await loadDeletedSessions();
+        // Select the restored session (same ID)
+        if (result.session_id) {
+            selectSession(result.session_id);
+        }
+    } catch (error) {
+        showError('Failed to restore session: ' + error.message);
+    }
+}
+
+/**
+ * Permanently delete a session from the store.
+ */
+async function permanentDeleteSession(sessionId) {
+    if (!confirm('Permanently delete this session? This cannot be undone.')) return;
+
+    try {
+        await apiCall(`/api/agents/${sessionId}/permanent`, { method: 'DELETE' });
+        showSuccess('Session permanently deleted');
+        await loadDeletedSessions();
+    } catch (error) {
+        showError('Failed to permanently delete: ' + error.message);
     }
 }

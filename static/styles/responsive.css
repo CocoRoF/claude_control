@@ -28,7 +28,8 @@
     }
 
     .sidebar.collapsed .session-stats,
-    .sidebar.collapsed .session-list {
+    .sidebar.collapsed .session-list,
+    .sidebar.collapsed .sidebar-deleted-section {
         display: none;
     }
 

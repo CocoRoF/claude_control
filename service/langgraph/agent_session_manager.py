@@ -50,6 +50,7 @@ from service.prompt.sections import build_agent_prompt
 from service.prompt.context_loader import ContextLoader
 from service.tool_policy import ToolPolicyEngine, ToolProfile
 from service.prompt.builder import PromptMode
+from service.claude_manager.session_store import get_session_store
 
 logger = getLogger(__name__)
 
@@ -86,6 +87,9 @@ class AgentSessionManager(SessionManager):
 
         # AgentSession 저장소 (로컬)
         self._local_agents: Dict[str, AgentSession] = {}
+
+        # Persistent session metadata store (sessions.json)
+        self._store = get_session_store()
 
         logger.info("✅ AgentSessionManager initialized")
 
@@ -199,6 +203,7 @@ class AgentSessionManager(SessionManager):
         self,
         request: CreateSessionRequest,
         enable_checkpointing: bool = False,
+        session_id: Optional[str] = None,
     ) -> AgentSession:
         """
         새 AgentSession 생성.
@@ -210,6 +215,7 @@ class AgentSessionManager(SessionManager):
         Args:
             request: 세션 생성 요청
             enable_checkpointing: 체크포인팅 활성화 여부
+            session_id: 기존 session_id 재사용 (복원 시)
 
         Returns:
             생성된 AgentSession 인스턴스
@@ -241,6 +247,7 @@ class AgentSessionManager(SessionManager):
             working_dir=request.working_dir,
             model_name=request.model,
             session_name=request.session_name,
+            session_id=session_id,
             system_prompt=system_prompt,
             env_vars=request.env_vars,
             mcp_config=merged_mcp_config,
@@ -284,6 +291,9 @@ class AgentSessionManager(SessionManager):
                 "type": "agent_session",
             })
             logger.info(f"[{session_id}] 📝 Session logger created")
+
+        # Persist session metadata to sessions.json
+        self._store.register(session_id, session_info.model_dump(mode="json"))
 
         logger.info(f"[{session_id}] ✅ AgentSession created successfully")
         return agent
@@ -368,7 +378,10 @@ class AgentSessionManager(SessionManager):
                 self.redis.delete_session(session_id)
                 logger.info(f"[{session_id}] Session deleted from Redis")
 
-            logger.info(f"[{session_id}] ✅ AgentSession deleted")
+            # Soft-delete in persistent store (keeps metadata for restore)
+            self._store.soft_delete(session_id)
+
+            logger.info(f"[{session_id}] ✅ AgentSession deleted (soft)")
             return True
 
         # 기존 방식 (ClaudeProcess 직접)

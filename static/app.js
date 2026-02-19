@@ -81,9 +81,18 @@ function switchTab(tabName) {
         refreshStorage();
     }
 
-    // Initialize or sync playground view
+    // Initialize or sync playground view; pause/resume 3D loop
     if (tabName === 'playground') {
         initPlaygroundView();
+        // Resume 3D render loop
+        if (_playgroundInitialized && window.Playground?.Scene?.resume) {
+            window.Playground.Scene.resume();
+        }
+    } else {
+        // Pause 3D render loop when leaving playground
+        if (_playgroundInitialized && window.Playground?.Scene?.pause) {
+            window.Playground.Scene.pause();
+        }
     }
 
     // Refresh dashboard when switching to dashboard tab
@@ -94,6 +103,11 @@ function switchTab(tabName) {
     // Load graph when switching to graph tab
     if (tabName === 'graph') {
         refreshGraphTab();
+    }
+
+    // Load info when switching to info tab
+    if (tabName === 'info') {
+        refreshInfoTab();
     }
 }
 
@@ -109,11 +123,14 @@ async function refreshAll() {
         // Just update the UI with SSR data (HTML is already rendered)
         updateHealthUI(state.healthStatus);
         syncPlaygroundSessions();
+        // Always load deleted sessions from API (not SSR'd)
+        loadDeletedSessions();
     } else {
         // Fallback: fetch data from API
         await loadSessions();
         await loadPrompts();
         await checkHealth();
+        await loadDeletedSessions();
     }
 }
 

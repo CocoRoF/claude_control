@@ -36,6 +36,7 @@ from service.langgraph import (
     AgentSession,
 )
 from service.logging.session_logger import get_session_logger
+from service.claude_manager.session_store import get_session_store
 
 logger = getLogger(__name__)
 
@@ -155,6 +156,48 @@ async def list_agent_sessions():
     return [agent.get_session_info() for agent in agents]
 
 
+# ============================================================================
+# Session Store API (MUST be before /{session_id} to avoid path capture)
+# ============================================================================
+
+
+@router.get("/store/deleted", response_model=List[dict])
+async def list_deleted_sessions():
+    """
+    List all soft-deleted sessions from the persistent store.
+    """
+    store = get_session_store()
+    return store.list_deleted()
+
+
+@router.get("/store/all", response_model=List[dict])
+async def list_all_stored_sessions():
+    """
+    List ALL sessions from the persistent store (active + deleted).
+    """
+    store = get_session_store()
+    return store.list_all()
+
+
+@router.get("/store/{session_id}")
+async def get_stored_session_info(
+    session_id: str = Path(..., description="Session ID"),
+):
+    """
+    Get detailed metadata for any session (active or deleted) from the store.
+    """
+    store = get_session_store()
+    record = store.get(session_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found in store")
+    return record
+
+
+# ============================================================================
+# Session CRUD (with /{session_id} path parameter)
+# ============================================================================
+
+
 @router.get("/{session_id}", response_model=SessionInfo)
 async def get_agent_session(
     session_id: str = Path(..., description="Session ID")
@@ -182,14 +225,90 @@ async def delete_agent_session(
     cleanup_storage: bool = Query(True, description="Also delete storage")
 ):
     """
-    Delete AgentSession.
+    Delete AgentSession (soft-delete — metadata preserved in sessions.json).
     """
     success = await agent_manager.delete_session(session_id, cleanup_storage)
     if not success:
         raise HTTPException(status_code=404, detail=f"AgentSession not found: {session_id}")
 
-    logger.info(f"✅ AgentSession deleted: {session_id}")
+    logger.info(f"✅ AgentSession soft-deleted: {session_id}")
     return {"success": True, "session_id": session_id}
+
+
+@router.delete("/{session_id}/permanent")
+async def permanent_delete_session(
+    session_id: str = Path(..., description="Session ID"),
+):
+    """
+    Permanently delete a session from the persistent store.
+    The session record is irrecoverably removed from sessions.json.
+    """
+    store = get_session_store()
+    # Also delete from live agents if still active
+    if agent_manager.has_agent(session_id):
+        await agent_manager.delete_session(session_id, cleanup_storage=True)
+    removed = store.permanent_delete(session_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found in store")
+    logger.info(f"✅ Session permanently deleted: {session_id}")
+    return {"success": True, "session_id": session_id}
+
+
+@router.post("/{session_id}/restore")
+async def restore_session(
+    session_id: str = Path(..., description="Session ID to restore"),
+):
+    """
+    Restore a soft-deleted session.
+
+    Re-creates the AgentSession using the original creation parameters
+    stored in sessions.json, with the same session_name and settings.
+    Returns the new SessionInfo (note: session_id will be NEW).
+    """
+    store = get_session_store()
+    record = store.get(session_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found in store")
+    if not record.get("is_deleted"):
+        raise HTTPException(status_code=400, detail="Session is not deleted — nothing to restore")
+
+    # Check not already live
+    if agent_manager.has_agent(session_id):
+        raise HTTPException(status_code=400, detail="Session is already running")
+
+    # Build creation params from stored record
+    params = store.get_creation_params(session_id)
+    if not params:
+        raise HTTPException(status_code=500, detail="Could not extract creation params")
+
+    try:
+        request = CreateSessionRequest(
+            session_name=params.get("session_name"),
+            working_dir=params.get("working_dir"),
+            model=params.get("model"),
+            max_turns=params.get("max_turns", 100),
+            timeout=params.get("timeout", 1800),
+            autonomous=params.get("autonomous", True),
+            autonomous_max_iterations=params.get("autonomous_max_iterations", 100),
+            role=SessionRole(params["role"]) if params.get("role") else SessionRole.WORKER,
+            manager_id=params.get("manager_id"),
+        )
+
+        # Reuse the SAME session_id → preserves storage_path
+        agent = await agent_manager.create_agent_session(
+            request=request,
+            session_id=session_id,
+        )
+
+        # register() in create_agent_session already updates the store record
+        # with is_deleted=False and fresh session info
+
+        session_info = agent.get_session_info()
+        logger.info(f"✅ Session restored: {session_id} (same ID, storage preserved)")
+        return session_info
+    except Exception as e:
+        logger.error(f"❌ Failed to restore session {session_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

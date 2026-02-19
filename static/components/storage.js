@@ -2,6 +2,11 @@
  * Claude Control Dashboard - Storage Management
  */
 
+// Cache: skip redundant fetches
+let _storageLastSessionId = null;
+let _storageLastTimestamp = 0;
+const _STORAGE_CACHE_TTL = 10000;  // 10 seconds
+
 /**
  * Refresh storage view for selected session
  */
@@ -10,6 +15,14 @@ async function refreshStorage() {
         showStoragePlaceholder('Select a session to view its storage');
         return;
     }
+
+    const now = Date.now();
+    if (state.selectedSessionId === _storageLastSessionId
+        && (now - _storageLastTimestamp) < _STORAGE_CACHE_TTL) {
+        return; // fresh enough
+    }
+    _storageLastSessionId = state.selectedSessionId;
+    _storageLastTimestamp = now;
 
     const storageTree = document.getElementById('storage-tree');
     storageTree.innerHTML = '<p class="storage-placeholder">Loading...</p>';

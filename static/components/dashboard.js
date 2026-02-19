@@ -2,6 +2,11 @@
  * Claude Control Dashboard - Manager Dashboard
  */
 
+// Cache: skip redundant fetches
+let _dashboardLastSessionId = null;
+let _dashboardLastTimestamp = 0;
+const _DASHBOARD_CACHE_TTL = 10000;  // 10 seconds
+
 /**
  * Refresh manager dashboard
  */
@@ -10,6 +15,14 @@ async function refreshManagerDashboard() {
 
     const session = state.sessions.find(s => s.session_id === state.selectedSessionId);
     if (!session || session.role !== 'manager') return;
+
+    const now = Date.now();
+    if (state.selectedSessionId === _dashboardLastSessionId
+        && (now - _dashboardLastTimestamp) < _DASHBOARD_CACHE_TTL) {
+        return; // fresh enough
+    }
+    _dashboardLastSessionId = state.selectedSessionId;
+    _dashboardLastTimestamp = now;
 
     // Update dashboard session name
     const sessionNameEl = document.getElementById('dashboard-session-name');

@@ -25,12 +25,10 @@
         // Model paths
         modelBasePath: '/static/assets/kenney_mini-characters/Models/GLB format/',
 
-        // Available character models (12 total)
+        // Available character models (5 total — reduced for faster loading)
         characters: [
-            'character-female-a', 'character-female-b', 'character-female-c',
-            'character-female-d', 'character-female-e', 'character-female-f',
+            'character-female-a', 'character-female-b',
             'character-male-a', 'character-male-b', 'character-male-c',
-            'character-male-d', 'character-male-e', 'character-male-f',
         ],
 
         // Model scale (adjusted for city scene)

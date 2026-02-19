@@ -16,6 +16,12 @@ const graphState = {
     isDragging: false,
     dragStart: { x: 0, y: 0 },
     nodePositions: {},      // { nodeId: { x, y } }
+    // Cleanup references for window-level event listeners
+    _windowMouseMove: null,
+    _windowMouseUp: null,
+    // Cache: avoid re-fetching if session hasn't changed
+    _lastGraphSessionId: null,
+    _lastGraphTimestamp: 0,
 };
 
 // ========== Layout Constants ==========
@@ -742,6 +748,14 @@ function initGraphPanZoom(wrapper, svg, svgW, svgH) {
     graphState._wrapper = wrapper;
     graphState._svg = svg;
 
+    // ── Clean up previous window-level listeners ──
+    if (graphState._windowMouseMove) {
+        window.removeEventListener('mousemove', graphState._windowMouseMove);
+    }
+    if (graphState._windowMouseUp) {
+        window.removeEventListener('mouseup', graphState._windowMouseUp);
+    }
+
     // Mouse wheel zoom (zoom toward cursor)
     wrapper.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -769,17 +783,22 @@ function initGraphPanZoom(wrapper, svg, svgW, svgH) {
         wrapper.style.cursor = 'grabbing';
     });
 
-    window.addEventListener('mousemove', (e) => {
+    // ── Named handlers for window-level listeners (removable) ──
+    graphState._windowMouseMove = (e) => {
         if (!graphState.isDragging) return;
         graphState.svgPan.x = e.clientX - graphState.dragStart.x;
         graphState.svgPan.y = e.clientY - graphState.dragStart.y;
         applyGraphTransform(svg);
-    });
+    };
 
-    window.addEventListener('mouseup', () => {
+    graphState._windowMouseUp = () => {
+        if (!graphState.isDragging) return;
         graphState.isDragging = false;
-        wrapper.style.cursor = 'grab';
-    });
+        if (wrapper) wrapper.style.cursor = 'grab';
+    };
+
+    window.addEventListener('mousemove', graphState._windowMouseMove);
+    window.addEventListener('mouseup', graphState._windowMouseUp);
 
     wrapper.style.cursor = 'grab';
 }
@@ -865,8 +884,17 @@ function showGraphEmptyState(msg) {
 
 /**
  * Called when graph tab is shown — load graph for currently selected session.
+ * Uses cache to avoid redundant fetches.
  */
 function refreshGraphTab() {
     const sessionId = state.selectedSessionId;
+    const now = Date.now();
+    // Skip if same session was loaded less than 10s ago
+    if (sessionId && sessionId === graphState._lastGraphSessionId
+        && (now - graphState._lastGraphTimestamp) < 10000) {
+        return;
+    }
+    graphState._lastGraphSessionId = sessionId;
+    graphState._lastGraphTimestamp = now;
     loadSessionGraph(sessionId);
 }

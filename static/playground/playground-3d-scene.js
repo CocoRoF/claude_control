@@ -630,6 +630,30 @@
             this._updateCameraPosition();
         }
 
+        /**
+         * Pause the render loop (when tab is hidden).
+         * Lightweight — keeps Three.js context alive, just stops rAF.
+         */
+        pause() {
+            if (!this.running) return;
+            this.running = false;
+            if (this.animationFrameId) {
+                cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
+            }
+        }
+
+        /**
+         * Resume the render loop (when tab becomes visible).
+         */
+        resume() {
+            if (this.running) return;          // already running
+            if (!this.isInitialized) return;   // never mounted
+            this.running = true;
+            this.lastFrameTime = performance.now();
+            this.animationFrameId = requestAnimationFrame((t) => this._gameLoop(t));
+        }
+
         destroy() {
             this.running = false;
 
